@@ -22,14 +22,17 @@ variable "aks_subnet_cidr" {
 
 variable "bastion_subnet_cidr" {
   type        = string
-  default     = "10.0.4.0/26" # must be /26 or larger
+  # Azure Bastion requires /26 or larger
+  default     = "10.0.4.0/26"
 }
 
+# Azure CNI Overlay pod CIDR (separate from VNet)
 variable "pod_cidr" {
   type        = string
   default     = "10.244.0.0/16"
 }
 
+# Cluster service CIDR & CoreDNS IP (must not overlap with VNet/pod CIDR)
 variable "service_cidr" {
   type        = string
   default     = "10.2.0.0/16"

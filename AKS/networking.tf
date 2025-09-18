@@ -14,7 +14,7 @@ resource "azurerm_subnet" "aks" {
   address_prefixes     = [var.aks_subnet_cidr]
 }
 
-# Bastion Subnet
+# Bastion Subnet (must be named AzureBastionSubnet and /26+)
 resource "azurerm_subnet" "bastion" {
   name                 = "AzureBastionSubnet"
   resource_group_name  = azurerm_resource_group.rg.name
@@ -43,10 +43,20 @@ resource "azurerm_nat_gateway" "nat" {
 resource "azurerm_nat_gateway_public_ip_association" "nat_pip_assoc" {
   nat_gateway_id       = azurerm_nat_gateway.nat.id
   public_ip_address_id = azurerm_public_ip.nat_pip.id
+
+  depends_on = [
+    azurerm_nat_gateway.nat,
+    azurerm_public_ip.nat_pip
+  ]
 }
 
 # Attach NAT Gateway to AKS Subnet
 resource "azurerm_subnet_nat_gateway_association" "aks_nat" {
   subnet_id      = azurerm_subnet.aks.id
   nat_gateway_id = azurerm_nat_gateway.nat.id
+
+  depends_on = [
+    azurerm_subnet.aks,
+    azurerm_nat_gateway.nat
+  ]
 }
