@@ -1,8 +1,8 @@
-# vllm-model-cache-pvc.yaml
+# vllm-cache-pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: vllm-model-cache
+  name: vllm-cache
   namespace: vllm
 spec:
   accessModes: ["ReadWriteOnce"]
