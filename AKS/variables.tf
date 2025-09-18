@@ -55,5 +55,5 @@ variable "node_count" {
 
 variable "node_size" {
   type    = string
-  default = "Standard_D4s_v5"
+  default = "Standard_D4s_v4"
 }
