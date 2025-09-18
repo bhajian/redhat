@@ -26,3 +26,7 @@ helm upgrade --install gpu-operator nvidia/gpu-operator \
 ## wait until all pods are Running
 kubectl -n gpu-operator get pods -o wide
 
+# setup huggingface token
+kubectl -n vllm create secret generic hf \
+  --from-literal=HUGGING_FACE_HUB_TOKEN=<HF> \
+  --dry-run=client -o yaml | kubectl apply -f -
