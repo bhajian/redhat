@@ -1,4 +1,4 @@
-# vllm-redhat-llama8b.yaml
+# vllm-redhat-llama8b-oci.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,7 +13,7 @@ spec:
       labels: { app: vllm-llama8b }
     spec:
       imagePullSecrets:
-        - name: rh-pull
+        - name: rh-pull   # <-- you created this for registry.redhat.io
       nodeSelector:
         kubernetes.azure.com/agentpool: "gpua10"
       tolerations:
@@ -21,39 +21,66 @@ spec:
           operator: "Equal"
           value: "gpu"
           effect: "NoSchedule"
+
+      # -------------- initContainer: pull model files from Red Hat OCI artifact into /models --------------
+      initContainers:
+        - name: pull-model-oras
+          # ORAS client image (small, no HF involved). Pulls files into /models/llama-3.1-8b-instruct
+          image: ghcr.io/oras-project/oras:1.2.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ORAS_REPOSITORY
+              value: "$ORAS_REF"   # <-- set this when applying, or hardcode the real reference
+          command: ["sh","-lc"]
+          args:
+            - |
+              set -euo pipefail
+              echo "Pulling model from ${ORAS_REPOSITORY} ..."
+              # Login to registry.redhat.io using the mounted docker creds from the rh-pull secret:
+              if [ -f /auth/.dockerconfigjson ]; then
+                # extract creds for registry.redhat.io
+                USER=$(jq -r '.auths["registry.redhat.io"].username' /auth/.dockerconfigjson)
+                PASS=$(jq -r '.auths["registry.redhat.io"].password' /auth/.dockerconfigjson)
+                oras login registry.redhat.io -u "$$USER" -p "$$PASS"
+              fi
+              mkdir -p /models/llama-3.1-8b-instruct
+              # Pull all files from the OCI artifact (assumes artifact stores HF-style files)
+              oras pull "${ORAS_REPOSITORY}" -o /models/llama-3.1-8b-instruct
+              ls -al /models/llama-3.1-8b-instruct
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: rh-creds
+              mountPath: /auth
+              readOnly: true
+
+      # -------------- main vLLM container: point to local model dir (NO Hugging Face) --------------
       containers:
         - name: vllm
           image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.2.1
           args:
             - "--model"
-            - "RedHatAI/Llama-3.1-8B-Instruct"
+            - "/models/llama-3.1-8b-instruct"   # local directory produced by initContainer
             - "--dtype"
             - "bfloat16"
             - "--max-model-len"
             - "8192"
-            - "--download-dir"
-            - "/models"
             - "--port"
             - "8000"
           env:
             - name: VLLM_WORKER_GPU_MEMORY_UTILIZATION
               value: "0.95"
-            - name: HF_HUB_ENABLE_HF_TRANSFER
+            # offline-friendly envs (no HF download expected)
+            - name: HF_HUB_OFFLINE
               value: "1"
-            # Uncomment if you created a Hugging Face token secret:
-            # - name: HF_TOKEN
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: hf
-            #       key: HF_TOKEN
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
           ports:
             - name: http
               containerPort: 8000
           resources:
-            requests:
-              nvidia.com/gpu: 1
-            limits:
-              nvidia.com/gpu: 1
+            requests: { nvidia.com/gpu: 1 }
+            limits:   { nvidia.com/gpu: 1 }
           volumeMounts:
             - name: model-cache
               mountPath: /models
@@ -64,10 +91,15 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 24
+
       volumes:
         - name: model-cache
           persistentVolumeClaim:
             claimName: vllm-model-cache
+        - name: rh-creds
+          secret:
+            secretName: rh-pull   # re-use dockerconfigjson to read creds in initContainer
+
 ---
 apiVersion: v1
 kind: Service
