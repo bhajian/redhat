@@ -1,0 +1,195 @@
+apiVersion: machine.openshift.io/v1beta1
+kind: MachineSet
+metadata:
+  annotations:
+    capacity.cluster-autoscaler.kubernetes.io/labels: kubernetes.io/arch=amd64
+    machine.openshift.io/GPU: '1'
+    machine.openshift.io/memoryMb: '262144'
+    machine.openshift.io/vCPU: '32'
+  resourceVersion: '707701'
+  name: demo-jnpqf-gpu-us-east-1d
+  uid: efa94535-4275-4317-afe7-7902b50618fd
+  creationTimestamp: '2025-08-22T14:57:07Z'
+  generation: 8
+  managedFields:
+    - apiVersion: machine.openshift.io/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          'f:template':
+            'f:spec':
+              'f:metadata':
+                'f:labels':
+                  .: {}
+                  'f:hardware-profile': {}
+                  'f:node-role.kubernetes.io/gpu': {}
+      manager: kubectl-patch
+      operation: Update
+      time: '2025-08-22T15:34:35Z'
+    - apiVersion: machine.openshift.io/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            .: {}
+            'f:capacity.cluster-autoscaler.kubernetes.io/labels': {}
+            'f:machine.openshift.io/GPU': {}
+          'f:labels':
+            .: {}
+            'f:machine.openshift.io/cluster-api-cluster': {}
+        'f:spec':
+          .: {}
+          'f:selector': {}
+          'f:template':
+            .: {}
+            'f:metadata':
+              .: {}
+              'f:labels':
+                .: {}
+                'f:machine.openshift.io/cluster-api-cluster': {}
+                'f:machine.openshift.io/cluster-api-machine-role': {}
+                'f:machine.openshift.io/cluster-api-machine-type': {}
+                'f:machine.openshift.io/cluster-api-machineset': {}
+                'f:node-role.kubernetes.io/gpu': {}
+            'f:spec':
+              .: {}
+              'f:lifecycleHooks': {}
+              'f:metadata': {}
+              'f:providerSpec':
+                .: {}
+                'f:value':
+                  'f:instanceType': {}
+                  'f:metadata':
+                    .: {}
+                    'f:creationTimestamp': {}
+                  'f:blockDevices': {}
+                  'f:kind': {}
+                  'f:securityGroups': {}
+                  'f:deviceIndex': {}
+                  'f:ami':
+                    .: {}
+                    'f:id': {}
+                  'f:metadataServiceOptions': {}
+                  'f:tags': {}
+                  .: {}
+                  'f:placement':
+                    .: {}
+                    'f:availabilityZone': {}
+                    'f:region': {}
+                  'f:subnet':
+                    .: {}
+                    'f:filters': {}
+                  'f:apiVersion': {}
+                  'f:iamInstanceProfile':
+                    .: {}
+                    'f:id': {}
+                  'f:credentialsSecret':
+                    .: {}
+                    'f:name': {}
+                  'f:userDataSecret':
+                    .: {}
+                    'f:name': {}
+                  'f:capacityReservationId': {}
+              'f:taints': {}
+      manager: Mozilla
+      operation: Update
+      time: '2025-08-22T16:07:31Z'
+    - apiVersion: machine.openshift.io/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            'f:machine.openshift.io/memoryMb': {}
+            'f:machine.openshift.io/vCPU': {}
+      manager: machine-controller-manager
+      operation: Update
+      time: '2025-08-22T16:07:31Z'
+    - apiVersion: machine.openshift.io/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:status':
+          .: {}
+          'f:fullyLabeledReplicas': {}
+          'f:observedGeneration': {}
+          'f:replicas': {}
+      manager: machineset-controller
+      operation: Update
+      subresource: status
+      time: '2025-08-22T16:07:55Z'
+  namespace: openshift-machine-api
+  labels:
+    machine.openshift.io/cluster-api-cluster: demo-jnpqf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      machine.openshift.io/cluster-api-cluster: demo-jnpqf
+      machine.openshift.io/cluster-api-machineset: demo-jnpqf-worker-us-east-1d
+  template:
+    metadata:
+      labels:
+        machine.openshift.io/cluster-api-cluster: demo-jnpqf
+        machine.openshift.io/cluster-api-machine-role: worker
+        machine.openshift.io/cluster-api-machine-type: worker
+        machine.openshift.io/cluster-api-machineset: demo-jnpqf-worker-us-east-1d
+        node-role.kubernetes.io/gpu: ''
+    spec:
+      lifecycleHooks: {}
+      metadata:
+        labels:
+          hardware-profile: gpu
+          node-role.kubernetes.io/gpu: ''
+      providerSpec:
+        value:
+          userDataSecret:
+            name: worker-user-data
+          placement:
+            availabilityZone: us-east-1d
+            region: us-east-1
+          credentialsSecret:
+            name: aws-cloud-credentials
+          capacityReservationId: ''
+          instanceType: g6e.8xlarge
+          metadata:
+            creationTimestamp: null
+          blockDevices:
+            - ebs:
+                encrypted: true
+                iops: 0
+                kmsKey:
+                  arn: ''
+                volumeSize: 120
+                volumeType: gp3
+          securityGroups:
+            - filters:
+                - name: 'tag:Name'
+                  values:
+                    - demo-jnpqf-node
+            - filters:
+                - name: 'tag:Name'
+                  values:
+                    - demo-jnpqf-lb
+          kind: AWSMachineProviderConfig
+          metadataServiceOptions: {}
+          tags:
+            - name: kubernetes.io/cluster/demo-jnpqf
+              value: owned
+          deviceIndex: 0
+          ami:
+            id: ami-0e8fd9094e487d1ff
+          subnet:
+            filters:
+              - name: 'tag:Name'
+                values:
+                  - demo-jnpqf-subnet-private-us-east-1d
+          apiVersion: machine.openshift.io/v1beta1
+          iamInstanceProfile:
+            id: demo-jnpqf-worker-profile
+      taints:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          value: 'true'
+status:
+  fullyLabeledReplicas: 1
+  observedGeneration: 8
+  replicas: 1

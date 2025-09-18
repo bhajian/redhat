@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-llama3-v2
+  namespace: vllm-vs-tgi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama3-v2
+  template:
+    metadata:
+      labels:
+        app: vllm-llama3-v2
+    spec:
+      restartPolicy: Always
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+      # ────── volumes ──────
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 100Gi
+      - name: model-cache
+        emptyDir: {}
+
+      containers:
+      - name: vllm
+        image: docker.io/vllm/vllm-openai:v0.9.0
+        imagePullPolicy: IfNotPresent
+
+        args:
+          - --model
+          - meta-llama/Meta-Llama-3-8B-Instruct
+          - --tensor-parallel-size
+          - "4"
+          - --port
+          - "8080"
+          - --dtype
+          - float16
+          - --max-model-len
+          - "8192"
+          - --max-num-seqs
+          - "8"
+          - --max-num-batched-tokens
+          - "8192"
+
+        env:
+          - name: NCCL_P2P_DISABLE
+            value: "1"
+          - name: HUGGING_FACE_HUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: HUGGING_FACE_HUB_TOKEN
+          - name: HF_HOME
+            value: /data/.cache/huggingface
+          - name: XDG_CACHE_HOME
+            value: /data/.cache
+          - name: FLASHINFER_WORKSPACE_DIR
+            value: /data/.cache/flashinfer
+          - name: HOME
+            value: /data
+
+        resources:
+          limits:
+            nvidia.com/gpu: 4
+            cpu: "32"
+            memory: 96Gi
+          requests:
+            nvidia.com/gpu: 4
+            cpu: "32"
+            memory: 96Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: model-cache
+            mountPath: /data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama3-svc-v2
+  namespace: vllm-vs-tgi
+spec:
+  selector:
+    app: vllm-llama3-v2
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llama3-v2
+  namespace: vllm-vs-tgi
+spec:
+  to:
+    kind: Service
+    name: llama3-svc-v2
+  tls:
+    termination: edge

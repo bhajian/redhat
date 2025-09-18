@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tgi-llama3
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tgi-llama3 }
+  template:
+    metadata:
+      labels: { app: tgi-llama3 }
+    spec:
+      serviceAccountName: tgi-sa
+      enableServiceLinks: false
+      nodeSelector: { node-role.kubernetes.io/worker-gpu: "" }
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      volumes:
+        - name: cache
+          emptyDir: {}
+      containers:
+        - name: tgi
+          image: ghcr.io/huggingface/text-generation-inference:3.3.1
+          command: ["text-generation-launcher"]
+          args:
+            - --model-id
+            - meta-llama/Meta-Llama-3-8B-Instruct
+            - --port
+            - "8080"
+            - --dtype
+            - float16
+            - --max-batch-size
+            - "8"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: HUGGING_FACE_HUB_TOKEN
+            - { name: HF_HOME,               value: /cache/hf_home }
+            - { name: HUGGINGFACE_HUB_CACHE, value: /cache/hf_cache }
+            - { name: TRANSFORMERS_CACHE,    value: /cache/hf_cache }
+            - { name: HOME,                  value: /cache }
+          volumeMounts:
+            - { name: cache, mountPath: /cache }
+          resources:
+            limits:   { nvidia.com/gpu: 1, cpu: "8",  memory: 28Gi }
+            requests: { nvidia.com/gpu: 1, cpu: "4",  memory: 24Gi }
+          securityContext:
+            runAsUser: 0                     # allowed by anyuid SCC
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tgi-llama3-svc
+  namespace: default
+spec:
+  selector: { app: tgi-llama3 }
+  ports:
+    - { name: http, port: 80, targetPort: 8080 }
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llama3
+  namespace: default
+spec:
+  to: { kind: Service, name: tgi-llama3-svc }
+  tls: { termination: edge }

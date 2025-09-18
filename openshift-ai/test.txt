@@ -1,0 +1,4 @@
+VLLM_URL = "https://llama3-vllm-vs-tgis.apps.cluster-jj67w.jj67w.sandbox1788.opentlc.com"
+TGI_URL  = "https://llama3-default.apps.cluster-jj67w.jj67w.sandbox1788.opentlc.com"
+HEADERS  = {"Content-Type": "application/json"}
+PROMPT   = "Explain quantum entanglement in one sentence."

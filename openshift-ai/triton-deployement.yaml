@@ -1,0 +1,138 @@
+############################################
+# Triton 24.03  ·  Meta-Llama-3-8B  ·  restricted SCC
+############################################
+
+# ⓐ persistent volume – survives restarts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llama3-model-pvc
+  namespace: default
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 60Gi }
+---
+# ⓑ model-config for Triton
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llama3-triton-config
+  namespace: default
+data:
+  config.pbtxt: |
+    name: "llama3"
+    platform: "pytorch_libtorch"
+    max_batch_size: 8
+    input  [ { name: "input_ids"      data_type: TYPE_INT32 dims: [ -1 ] },
+             { name: "attention_mask" data_type: TYPE_INT32 dims: [ -1 ] } ]
+    output [ { name: "logits" data_type: TYPE_FP16 dims: [ -1, -1 ] } ]
+---
+# ⓒ deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton-llama3
+  namespace: default
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: triton-llama3 } }
+  template:
+    metadata: { labels: { app: triton-llama3 } }
+
+    spec:
+      enableServiceLinks: false
+
+      # land ONLY on GPU worker nodes
+      nodeSelector: { node-role.kubernetes.io/worker-gpu: "" }
+      tolerations:   # accept the standard GPU taint
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      # pod-level settings demanded by “restricted” PodSecurity
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        capabilities: { drop: ["ALL"] }
+        seccompProfile: { type: RuntimeDefault }
+
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: llama3-model-pvc }
+        - name: config
+          configMap: { name: llama3-triton-config }
+
+      # ── init-container: pulls 15 GiB of weights from HF ──
+      initContainers:
+        - name: download-model
+          image: docker.io/huggingface/transformers-pytorch-gpu:latest
+          command: ["/bin/bash","-c"]
+          args:
+            - |
+              set -e
+              export PATH="/opt/conda/bin:$PATH"
+              echo "⏬  Downloading Llama-3 8B …"
+              python3 - <<'PY'
+              from huggingface_hub import snapshot_download; import os
+              tgt="/data/models/llama3/1"
+              os.makedirs(tgt, exist_ok=True)
+              snapshot_download(
+                  repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
+                  cache_dir="/data/.hf",
+                  token=os.environ["HUGGING_FACE_HUB_TOKEN"],
+                  local_dir=tgt,
+                  local_dir_use_symlinks=False)
+              PY
+              cp /config/config.pbtxt /data/models/llama3
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom: { secretKeyRef: { name: hf-secret, key: HUGGING_FACE_HUB_TOKEN } }
+          volumeMounts:
+            - { name: data,   mountPath: /data }
+            - { name: config, mountPath: /config }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+
+      # ── Triton server ──
+      containers:
+        - name: triton
+          image: nvcr.io/nvidia/tritonserver:24.03-py3
+          args: [ "tritonserver",
+                  "--model-repository=/data/models",
+                  "--http-port=8080" ]
+          env:
+            - { name: XDG_CACHE_HOME, value: /data/.cache }
+            - { name: HOME,           value: /data }
+          resources:
+            limits:   { nvidia.com/gpu: 1, cpu: "8", memory: 20Gi }
+            requests: { nvidia.com/gpu: 1, cpu: "4", memory: 16Gi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+---
+# ⓓ service + route
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton-llama3-svc
+  namespace: default
+spec:
+  selector: { app: triton-llama3 }
+  ports: [{ name: http, port: 80, targetPort: 8080 }]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: triton-llama3
+  namespace: default
+spec:
+  to: { kind: Service, name: triton-llama3-svc }
+  tls: { termination: edge }
