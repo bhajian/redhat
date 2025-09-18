@@ -12,17 +12,7 @@ metadata:
 # type: kubernetes.io/dockerconfigjson
 # data:
 #   .dockerconfigjson: <base64 of your docker config json>
----
-# Hugging Face token (REQUIRED for HF pulls)
-# Replace the placeholder with your real token or create/patch separately.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hf
-  namespace: vllm
-type: Opaque
-stringData:
-  HUGGING_FACE_HUB_TOKEN: "<PUT_YOUR_HF_TOKEN_HERE>"
+
 ---
 # Model/cache PVC so downloads persist across restarts
 apiVersion: v1
