@@ -3,18 +3,17 @@ kind: Namespace
 metadata:
   name: vllm
 ---
-# Optional: Red Hat registry pull secret (uncomment & fill if your RH image needs auth)
+# Hugging Face token (REQUIRED). Replace the placeholder with your real token
 # apiVersion: v1
 # kind: Secret
 # metadata:
-#   name: rh-pull
+#   name: hf
 #   namespace: vllm
-# type: kubernetes.io/dockerconfigjson
-# data:
-#   .dockerconfigjson: <base64 of your docker config json>
-
+# type: Opaque
+# stringData:
+#   HUGGING_FACE_HUB_TOKEN: "<PUT_YOUR_HF_TOKEN_HERE>"
 ---
-# Model/cache PVC so downloads persist across restarts
+# Persistent cache so the model isn't re-downloaded on every restart
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -42,16 +41,16 @@ spec:
       labels:
         app: vllm-llama8b
     spec:
-      # Uncomment if your RH image requires auth from registry.redhat.io
+      # If your registry.redhat.io requires auth, uncomment and create a docker-registry secret named rh-pull
       # imagePullSecrets:
       #   - name: rh-pull
 
-      # Ensure the mounted PVC is writable by the container user
+      # Ensure PVC mounts are group-writable; keep fsGroup but don't force a non-existent UID
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
 
-      # GPU nodepool scheduling (matches your AKS setup)
+      # Schedule on your GPU pool and tolerate its taint
       nodeSelector:
         kubernetes.azure.com/agentpool: "gpua10"
       tolerations:
@@ -60,14 +59,15 @@ spec:
           value: "gpu"
           effect: "NoSchedule"
 
-      # Pre-fix permissions on the cache volume (handles leftover root-owned files)
+      # Fix permissions on cache before vLLM starts (handles any root-owned leftovers)
       initContainers:
         - name: fix-cache-perms
           image: registry.access.redhat.com/ubi9/ubi-minimal:latest
           command: ["/bin/sh", "-lc"]
           args:
             - |
-              mkdir -p /home/vllm/.cache && chown -R 1000:1000 /home/vllm/.cache || true
+              mkdir -p /home/vllm/.cache \
+              && chown -R 1000:1000 /home/vllm/.cache || true
           volumeMounts:
             - name: cache
               mountPath: /home/vllm/.cache
@@ -80,13 +80,13 @@ spec:
           command: ["vllm"]
           args:
             - "serve"
-            - "RedHatAI/Llama-3.1-8B-Instruct"  # positional arg (no --model)
+            - "RedHatAI/Llama-3.1-8B-Instruct"  # positional (no --model)
             - "--tensor-parallel-size"
             - "1"              # single A10
             - "--dtype"
             - "bfloat16"
             - "--max-model-len"
-            - "8192"           # use 4096 if memory is tight
+            - "8192"           # drop to 4096 if memory is tight
             - "--enforce-eager"
             - "--port"
             - "8000"
@@ -100,12 +100,13 @@ spec:
               value: "0"
             - name: HF_HOME
               value: "/home/vllm/.cache"
+            - name: TORCHINDUCTOR_CACHE_DIR
+              value: "/tmp/torchinductor"
             - name: VLLM_WORKER_GPU_MEMORY_UTILIZATION
-              value: "0.95"    # if OOM, drop to 0.90
+              value: "0.95"    # try 0.90 if OOM
+          # Run as root to avoid getpwuid() crash from PyTorch Inductor
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
+            runAsUser: 0
           resources:
             requests:
               nvidia.com/gpu: 1
@@ -121,9 +122,10 @@ spec:
             httpGet:
               path: /v1/models
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 10
-            failureThreshold: 24
+            timeoutSeconds: 5
+            failureThreshold: 30
       volumes:
         - name: cache
           persistentVolumeClaim:
