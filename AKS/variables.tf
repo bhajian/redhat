@@ -1,6 +1,6 @@
 variable "location" {
   type        = string
-  default     = "canadacentral"
+  default     = "eastus"
   description = "Azure region"
 }
 
