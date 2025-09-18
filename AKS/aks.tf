@@ -28,7 +28,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     dns_service_ip       = var.dns_service_ip
     load_balancer_sku    = "standard"
     outbound_type        = "userAssignedNATGateway"
-    network_dataplane    = "cilium"
+    network_data_plane    = "cilium"
   }
 
   role_based_access_control_enabled = true
