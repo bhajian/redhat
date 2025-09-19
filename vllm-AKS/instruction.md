@@ -7,6 +7,21 @@ This guide walks you through provisioning an **AKS cluster** using **Terraform**
 
 ## 0) Prerequisites
 
+### Total Regional vCPUs required
+
+Quota Name: Total Regional vCPUs
+Region: e.g. eastus
+👉 Request at least 100–150 vCPUs to allow for future scale.
+
+| Purpose                                                | Estimate       |
+| ------------------------------------------------------ | -------------- |
+| 1x system node (Standard\_DS2\_v2)                     | 2 vCPUs        |
+| 1x GPU node (Standard\_NV24ads\_A10\_v5)               | 24 vCPUs       |
+| **Buffer (Terraform preview/init, autoscaling, etc.)** | 20–50 vCPUs    |
+| **Total Recommended**                                  | **≥100 vCPUs** |
+
+
+
 From a fresh Linux VM (Ubuntu/RHEL):
 
 ```bash
