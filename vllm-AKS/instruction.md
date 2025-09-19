@@ -4,25 +4,26 @@ This guide walks you through deploying **Llama-3.1-8B-Instruct** with **Red Hat�
 
 ---
 
-## 0️⃣ Prerequisites
+## 0) Prereqs
 
-- **CLI Tools**:  
-  - `az` (Azure CLI)  
-  - `kubectl`  
-  - `helm`  
-  - (Optional) `podman` for Red Hat registry auth  
-
-- **Azure**: Owner/Contributor access to the subscription  
-- **Hugging Face Token**: Must have `read` access  
-- (Optional) Red Hat registry access via `podman login registry.redhat.io`  
+**CLI:** Azure CLI (`az`), `kubectl`, `helm`  
+**Azure:** Owner/Contributor on the target subscription  
+**Hugging Face token:** read access token in hand  
+**(Optional)** Podman login to `registry.redhat.io` if your environment requires authenticated pulls
 
 ```bash
-# Login to Azure
+# Login
 az login
 az account set --subscription "<SUBSCRIPTION_ID>"
+```
 
+---
 
-1️⃣ Create the AKS Cluster
+## 1) Create the AKS Cluster
+
+Create a resource group and a basic AKS cluster with a system node pool (CPU).
+
+```bash
 # Variables
 LOCATION="eastus"
 RG="ben-aks-rg-settled-treefrog"
@@ -31,7 +32,7 @@ CLUSTER="ben-aks-aks"
 # Resource group
 az group create -n "$RG" -l "$LOCATION"
 
-# AKS Cluster
+# AKS (system pool: default size)
 az aks create \
   -g "$RG" -n "$CLUSTER" \
   --location "$LOCATION" \
@@ -43,8 +44,16 @@ az aks create \
 # Kubeconfig
 az aks get-credentials -g "$RG" -n "$CLUSTER"
 kubectl get nodes -o wide
+```
 
-2️⃣ Add an A10 GPU Node Pool
+---
+
+## 2) Add an A10 GPU Node Pool
+
+Pick a GPU size that your region/subscription supports (A10 family recommended). Example:
+
+```bash
+# Add GPU pool (A10)
 az aks nodepool add \
   --resource-group "$RG" \
   --cluster-name "$CLUSTER" \
@@ -53,69 +62,100 @@ az aks nodepool add \
   --node-count 1 \
   --labels gpu=true \
   --node-taints sku=gpu:NoSchedule
+```
 
+If you get a “VMSizeNotSupported” error, choose a size from the available list or pick a different region.
 
-⚠️ If you get VMSizeNotSupported, switch to a supported size or region.
-
+```bash
 kubectl get nodes -L agentpool,gpu -o wide
+```
 
-3️⃣ Install the NVIDIA GPU Operator
+---
+
+## 3) Install the NVIDIA GPU Operator
+
+This installs the NVIDIA driver, device plugin, container toolkit, DCGM exporter, etc., on the GPU node(s).
+
+```bash
 helm repo add nvidia https://nvidia.github.io/gpu-operator
 helm repo update
 
 helm upgrade --install gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator --create-namespace
+```
 
-# Check pod readiness
+Watch for ready pods:
+
+```bash
 kubectl -n gpu-operator get pods -o wide
+```
 
-# Confirm GPU visibility
+Confirm the GPU resource is visible on the GPU node:
+
+```bash
 kubectl describe node -l gpu=true | grep -i "nvidia.com/gpu" -n || echo "GPU resource not visible yet"
+```
 
-4️⃣ Create Namespace & Hugging Face Secret
+You should eventually see `Allocatable: nvidia.com/gpu: 1`.
+
+---
+
+## 4) Create the vLLM Namespace & Secrets
+
+```bash
 kubectl create namespace vllm
 
 kubectl -n vllm create secret generic hf \
   --from-literal=HUGGING_FACE_HUB_TOKEN=<YOUR_HF_TOKEN> \
   --dry-run=client -o yaml | kubectl apply -f -
+```
 
+(Optional) Red Hat registry pull secret (if required in your environment)
 
-(Optional) If required, add pull secret for registry.redhat.io:
-
-# Ensure you're logged in with podman
+```bash
+# Ensure you're logged in with podman first:
 # podman login registry.redhat.io
 
 kubectl -n vllm create secret generic rh-pull \
   --from-file=.dockerconfigjson="$XDG_RUNTIME_DIR/containers/auth.json" \
   --type=kubernetes.io/dockerconfigjson
+```
 
-5️⃣ Deploy vLLM with Llama-3.1-8B-Instruct
+The deployment manifest below has `imagePullSecrets` commented out. Uncomment it if you created `rh-pull`.
+
+---
+
+## 5) Deploy Red Hat vLLM with Llama-3.1-8B-Instruct
+
+Apply the manifest that includes Namespace, PVC, Deployment, and Service:
+
+```bash
 kubectl apply -f vllm-redhat-llama8b.yaml
+```
 
+Check status and logs:
 
-Includes:
-
-Namespace, PVC (50Gi), Deployment
-
-GPU scheduling (nodeSelector + tolerations)
-
-LoadBalancer exposing OpenAI-compatible API
-
-Check logs and service:
-
+```bash
 kubectl -n vllm get pods -o wide
 kubectl -n vllm logs -f deploy/vllm-llama8b -c vllm
 kubectl -n vllm get svc vllm-llama8b
+```
 
-6️⃣ Test the Inference API
+Grab the `EXTERNAL-IP` of the Service.
+
+---
+
+## 6) Test the Endpoint
 
 List models:
 
+```bash
 curl http://<LOADBALANCER_IP>:8000/v1/models
-
+```
 
 Stream a chat completion:
 
+```bash
 curl -N http://<LOADBALANCER_IP>:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -126,10 +166,11 @@ curl -N http://<LOADBALANCER_IP>:8000/v1/chat/completions \
     "max_tokens": 100,
     "stream": true
   }'
-
+```
 
 Non-streaming example:
 
+```bash
 curl http://<LOADBALANCER_IP>:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -139,38 +180,46 @@ curl http://<LOADBALANCER_IP>:8000/v1/chat/completions \
     ],
     "max_tokens": 150
   }'
+```
 
-7️⃣ Tuning & Notes
+---
 
-🔧 GPU Fit on A10:
+## 7) Tuning & Notes
 
-Lower VLLM_WORKER_GPU_MEMORY_UTILIZATION (e.g. 0.82)
+- **GPU fit on A10**:
+  - If you see memory errors, reduce:
+    - `VLLM_WORKER_GPU_MEMORY_UTILIZATION` (e.g., 0.82)
+    - `--max-model-len` (e.g., 4096)
 
-Reduce --max-model-len (e.g. 4096)
+- **Persistence**:
+  - The `vllm-cache` PVC helps speed up model loading
 
-💾 Persistence:
-Uses vllm-cache PVC to avoid model re-downloads
+- **Scaling**:
+  - Use `--tensor-parallel-size` for multi-GPU
+  - Add HPA, PDB, Ingress, TLS for production
 
-📈 Scaling:
-Use --tensor-parallel-size for multi-GPU
-Add HPA, PDBs, Ingress + TLS for production
+- **Security**:
+  - Use Kubernetes Secrets for tokens
+  - Never commit secrets to git
 
-🔐 Security:
-Store secrets in Secrets, never commit tokens
+---
 
-8️⃣ Clean Up
+## 8) Clean Up
+
+```bash
 kubectl delete -f vllm-redhat-llama8b.yaml
 kubectl delete ns vllm
 helm uninstall gpu-operator -n gpu-operator
 az aks nodepool delete -g "$RG" --cluster-name "$CLUSTER" -n gpua10
+```
 
-📂 Files in This Repo
+---
 
-vllm-redhat-llama8b.yaml — Namespace, PVC, Deployment, LoadBalancer Service
+## Files in This Repo
 
-*.tf — Terraform configs for AKS (optional)
+- `vllm-redhat-llama8b.yaml` — Namespace, PVC, Deployment, Service (LoadBalancer)  
+- `*.tf` — Optional Terraform files for AKS creation
 
-✅ You now have a fully working Llama-3.1-8B inference server on AKS using A10 GPUs with an OpenAI-compatible API powered by Red Hat’s vLLM.
+---
 
-
-Let me know if you'd like this saved as a downloadable `.md` file or converted into a shareable README layout!
+✅ You now have a fully functioning Llama-3.1-8B inference server on AKS, powered by NVIDIA A10 GPUs and exposed via an OpenAI-compatible API.
