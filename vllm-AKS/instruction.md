@@ -30,3 +30,18 @@ kubectl -n gpu-operator get pods -o wide
 kubectl -n vllm create secret generic hf \
   --from-literal=HUGGING_FACE_HUB_TOKEN=<HF> \
   --dry-run=client -o yaml | kubectl apply -f -
+
+
+
+
+# Try the model
+curl http://57.152.10.249:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "RedHatAI/Llama-3.1-8B-Instruct",
+    "messages": [
+      {"role": "user", "content": "Write a short poem about Kubernetes and GPUs."}
+    ],
+    "max_tokens": 100,
+    "stream": true
+  }'
