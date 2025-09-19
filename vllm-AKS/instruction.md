@@ -16,7 +16,7 @@ Region: e.g. eastus
 | Purpose                                                | Estimate       |
 | ------------------------------------------------------ | -------------- |
 | 1x system node (Standard\_DS2\_v2)                     | 2 vCPUs        |
-| 3x AKS Worker node (Standard\_DS2\_v2)                 | 48 vCPUs       |
+| 3x AKS Worker node (Standard\_DS4\_v4)                 | 48 vCPUs       |
 | 1x GPU node (Standard\_NV24ads\_A10\_v5)               | 24 vCPUs       |
 | **Buffer (Terraform preview/init, autoscaling, etc.)** | 20–50 vCPUs    |
 | **Total Recommended**                                  | **≥100 vCPUs** |
