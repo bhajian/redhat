@@ -103,7 +103,7 @@ spec:
             - name: TORCHINDUCTOR_CACHE_DIR
               value: "/tmp/torchinductor"
             - name: VLLM_WORKER_GPU_MEMORY_UTILIZATION
-              value: "0.95"    # try 0.90 if OOM
+              value: "0.85"    # try 0.90 if OOM
           # Run as root to avoid getpwuid() crash from PyTorch Inductor
           securityContext:
             runAsUser: 0

@@ -10,7 +10,7 @@ az aks nodepool add \
   --resource-group "$RG" \
   --cluster-name "$CLUSTER" \
   --name gpua10 \
-  --node-vm-size Standard_NV6ads_A10_v5 \
+  --node-vm-size Standard_NV24ads_A10_v5 \
   --node-count 1 \
   --labels gpu=true \
   --node-taints sku=gpu:NoSchedule
