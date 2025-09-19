@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: vllm
 ---
-# Hugging Face token (REQUIRED). Replace the placeholder with your real token
+# Hugging Face token (optional here if you've already created it separately)
 # apiVersion: v1
 # kind: Secret
 # metadata:
@@ -13,7 +13,6 @@ metadata:
 # stringData:
 #   HUGGING_FACE_HUB_TOKEN: "<PUT_YOUR_HF_TOKEN_HERE>"
 ---
-# Persistent cache so the model isn't re-downloaded on every restart
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -41,16 +40,15 @@ spec:
       labels:
         app: vllm-llama8b
     spec:
-      # If your registry.redhat.io requires auth, uncomment and create a docker-registry secret named rh-pull
+      # Uncomment if your registry.redhat.io needs this secret
       # imagePullSecrets:
       #   - name: rh-pull
 
-      # Ensure PVC mounts are group-writable; keep fsGroup but don't force a non-existent UID
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
 
-      # Schedule on your GPU pool and tolerate its taint
+      # Schedule on your GPU pool and tolerate its taints
       nodeSelector:
         kubernetes.azure.com/agentpool: "gpua10"
       tolerations:
@@ -58,8 +56,11 @@ spec:
           operator: "Equal"
           value: "gpu"
           effect: "NoSchedule"
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
 
-      # Fix permissions on cache before vLLM starts (handles any root-owned leftovers)
+      # Fix permissions on the HF cache dir
       initContainers:
         - name: fix-cache-perms
           image: registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -80,13 +81,21 @@ spec:
           command: ["vllm"]
           args:
             - "serve"
-            - "RedHatAI/Llama-3.1-8B-Instruct"  # positional (no --model)
+            - "RedHatAI/Llama-3.1-8B-Instruct"   # positional model
             - "--tensor-parallel-size"
-            - "1"              # single A10
+            - "1"
             - "--dtype"
             - "bfloat16"
             - "--max-model-len"
-            - "8192"           # drop to 4096 if memory is tight
+            - "4096"                              # trimmed to fit A10
+            - "--kv-cache-dtype"
+            - "fp8"                               # big VRAM saver
+            - "--gpu-memory-utilization"
+            - "0.80"                              # below the 0.9 default
+            - "--max-num-seqs"
+            - "8"
+            - "--swap-space"
+            - "8"                                 # optional RAM spillover
             - "--enforce-eager"
             - "--port"
             - "8000"
@@ -102,9 +111,7 @@ spec:
               value: "/home/vllm/.cache"
             - name: TORCHINDUCTOR_CACHE_DIR
               value: "/tmp/torchinductor"
-            - name: VLLM_WORKER_GPU_MEMORY_UTILIZATION
-              value: "0.85"    # try 0.90 if OOM
-          # Run as root to avoid getpwuid() crash from PyTorch Inductor
+          # run as root to avoid torch.getpwuid() issue
           securityContext:
             runAsUser: 0
           resources:
