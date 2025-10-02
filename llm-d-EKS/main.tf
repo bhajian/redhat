@@ -10,28 +10,72 @@ terraform {
 # -------------------------
 # Variables
 # -------------------------
-variable "region" { type = string, default = "us-east-1" }
-variable "cluster_name" { type = string, default = "eks-gpu-prod" }
-variable "cluster_version" { type = string, default = "1.30" }
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+variable "cluster_name" {
+  type    = string
+  default = "eks-gpu-prod"
+}
+variable "cluster_version" {
+  type    = string
+  default = "1.30"
+}
 
-variable "vpc_id" { type = string }
-variable "private_subnet_ids" { type = list(string) }
-variable "public_subnet_ids" { type = list(string) }
+variable "vpc_id" {
+  type = string
+}
+variable "private_subnet_ids" {
+  type = list(string)
+}
+variable "public_subnet_ids" {
+  type = list(string)
+}
 
 # IAM role you use to admin the cluster
-variable "admin_role_arn" { type = string }
+variable "admin_role_arn" {
+  type = string
+}
 
 # Node groups
-variable "cpu_instance_type" { type = string, default = "m6i.large" }
-variable "cpu_desired" { type = number, default = 2 }
-variable "cpu_min" { type = number, default = 2 }
-variable "cpu_max" { type = number, default = 5 }
+variable "cpu_instance_type" {
+  type    = string
+  default = "m6i.large"
+}
+variable "cpu_desired" {
+  type    = number
+  default = 2
+}
+variable "cpu_min" {
+  type    = number
+  default = 2
+}
+variable "cpu_max" {
+  type    = number
+  default = 5
+}
 
-variable "enable_gpu_node_group" { type = bool, default = false }
-variable "gpu_instance_type" { type = string, default = "g5.xlarge" }
-variable "gpu_desired" { type = number, default = 1 }
-variable "gpu_min" { type = number, default = 0 }
-variable "gpu_max" { type = number, default = 3 }
+variable "enable_gpu_node_group" {
+  type    = bool
+  default = false
+}
+variable "gpu_instance_type" {
+  type    = string
+  default = "g5.xlarge"
+}
+variable "gpu_desired" {
+  type    = number
+  default = 1
+}
+variable "gpu_min" {
+  type    = number
+  default = 0
+}
+variable "gpu_max" {
+  type    = number
+  default = 3
+}
 
 locals { gpu_enabled = var.enable_gpu_node_group }
 
