@@ -20,7 +20,7 @@ provider "aws" {
   region = var.region
 }
 
-# EKS cluster connection (available after cluster is created)
+# Populate k8s/helm providers after the cluster exists
 data "aws_eks_cluster" "this" {
   depends_on = [module.eks]
   name       = module.eks.cluster_name
