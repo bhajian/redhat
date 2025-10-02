@@ -78,9 +78,7 @@ variable "gpu_max" {
   default = 3
 }
 
-locals {
-  gpu_enabled = var.enable_gpu_node_group
-}
+locals { gpu_enabled = var.enable_gpu_node_group }
 
 ############################
 # Providers
@@ -146,8 +144,7 @@ resource "aws_eks_access_entry" "admin" {
   cluster_name  = module.eks.cluster_name
   principal_arn = var.admin_role_arn
   type          = "STANDARD"
-
-  depends_on = [module.eks]
+  depends_on    = [module.eks]
 }
 
 resource "aws_eks_access_policy_association" "admin" {
@@ -189,7 +186,7 @@ resource "aws_ec2_tag" "private_role_internal_elb" {
 }
 
 ############################
-# k8s/helm providers after cluster exists
+# Data for k8s/helm providers (after cluster exists)
 ############################
 data "aws_eks_cluster" "this" {
   depends_on = [module.eks]
@@ -205,8 +202,10 @@ provider "kubernetes" {
   cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this.certificate_authority[0].data), null)
   token                  = try(data.aws_eks_cluster_auth.this.token, null)
 }
+
+# IMPORTANT: Helm provider expects 'kubernetes' as an ARGUMENT (map), not a nested block in your environment
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = try(data.aws_eks_cluster.this.endpoint, null)
     cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this.certificate_authority[0].data), null)
     token                  = try(data.aws_eks_cluster_auth.this.token, null)
@@ -281,7 +280,7 @@ resource "helm_release" "nvidia_device_plugin" {
 ############################
 # Outputs
 ############################
-output "cluster_name"      { value = module.eks.cluster_name }
-output "cluster_endpoint"  { value = data.aws_eks_cluster.this.endpoint }
-output "oidc_provider_arn" { value = module.eks.oidc_provider_arn }
-output "node_group_names"  { value = [for ng in module.eks.eks_managed_node_groups : ng.node_group_name] }
+output "cluster_name"     { value = module.eks.cluster_name }
+output "cluster_endpoint" { value = data.aws_eks_cluster.this.endpoint }
+output "oidc_provider_arn"{ value = module.eks.oidc_provider_arn }
+output "node_group_names" { value = [for ng in module.eks.eks_managed_node_groups : ng.node_group_name] }
