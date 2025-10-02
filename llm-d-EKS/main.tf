@@ -150,7 +150,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = try(data.aws_eks_cluster.this.endpoint, null)
     cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this.certificate_authority[0].data), null)
     token                  = try(data.aws_eks_cluster_auth.this.token, null)
