@@ -1,8 +1,6 @@
-region          = "us-east-1"
-cluster_name    = "eks-gpu-prod"
-
-# FIX: Changed to a supported EKS version
-cluster_version = "1.30"
+region             = "us-east-1"
+cluster_name       = "eks-gpu-prod"
+kubernetes_version = "1.33"
 
 vpc_id = "vpc-0c5b87e00f328a749"
 
@@ -18,8 +16,7 @@ public_subnet_ids = [
   "subnet-0236bf8e61a22de72",
 ]
 
-# FIX: Replace this entire line with the ARN of a real IAM role in your account
-admin_role_arn = "arn:aws:iam::256274107934:role/eks-role"
+admin_role_arn = "arn:aws:iam::256274107934:role/YourEKSAdminRole"
 
 cpu_instance_type = "m6i.large"
 cpu_desired       = 2
@@ -30,4 +27,4 @@ enable_gpu_node_group = false
 gpu_instance_type     = "g5.xlarge"
 gpu_desired           = 0
 gpu_min               = 0
-gpu_max               = 3
+gpu_max               = 0
