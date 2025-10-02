@@ -1,57 +1,123 @@
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    aws        = { source = "hashicorp/aws",        version = "~> 6.0" }
-    kubernetes = { source = "hashicorp/kubernetes", version = ">= 2.29" }
-    helm       = { source = "hashicorp/helm",       version = ">= 2.13" }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.29"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.13"
+    }
   }
 }
 
 #################################
-# Variables (keep your tfvars)
+# Variables
 #################################
-variable "region"             { type = string, default = "us-east-1" }
-variable "cluster_name"       { type = string, default = "eks-gpu-prod" }
-variable "kubernetes_version" { type = string, default = "1.33" }  # latest EKS
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
 
-variable "vpc_id"             { type = string }
-variable "private_subnet_ids" { type = list(string) }
-variable "public_subnet_ids"  { type = list(string) }
+variable "cluster_name" {
+  type    = string
+  default = "eks-gpu-prod"
+}
+
+variable "kubernetes_version" {
+  type    = string
+  default = "1.33"  # latest EKS supported
+}
+
+variable "vpc_id" {
+  type = string
+}
+
+variable "private_subnet_ids" {
+  type = list(string)
+}
+
+variable "public_subnet_ids" {
+  type = list(string)
+}
 
 # Admin IAM role to grant cluster-admin
-variable "admin_role_arn" { type = string }
+variable "admin_role_arn" {
+  type = string
+}
 
 # Node groups
-variable "cpu_instance_type"    { type = string, default = "m6i.large" }
-variable "cpu_desired"          { type = number, default = 2 }
-variable "cpu_min"              { type = number, default = 2 }
-variable "cpu_max"              { type = number, default = 5 }
+variable "cpu_instance_type" {
+  type    = string
+  default = "m6i.large"
+}
 
-variable "enable_gpu_node_group" { type = bool,   default = false }
-variable "gpu_instance_type"     { type = string, default = "g5.xlarge" }
-variable "gpu_desired"           { type = number, default = 1 }
-variable "gpu_min"               { type = number, default = 0 }
-variable "gpu_max"               { type = number, default = 3 }
+variable "cpu_desired" {
+  type    = number
+  default = 2
+}
 
-locals { gpu_enabled = var.enable_gpu_node_group }
+variable "cpu_min" {
+  type    = number
+  default = 2
+}
+
+variable "cpu_max" {
+  type    = number
+  default = 5
+}
+
+variable "enable_gpu_node_group" {
+  type    = bool
+  default = false
+}
+
+variable "gpu_instance_type" {
+  type    = string
+  default = "g5.xlarge"
+}
+
+variable "gpu_desired" {
+  type    = number
+  default = 1
+}
+
+variable "gpu_min" {
+  type    = number
+  default = 0
+}
+
+variable "gpu_max" {
+  type    = number
+  default = 3
+}
+
+locals {
+  gpu_enabled = var.enable_gpu_node_group
+}
 
 #################################
 # Providers
 #################################
-provider "aws" { region = var.region }
+provider "aws" {
+  region = var.region
+}
 
 #################################
 # EKS (module v21 + AWS provider v6)
 #################################
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 21.3"   # v21 stream (supports provider v6)
+  version = "~> 21.3"
 
-  # NOTE: v21 renamed inputs:
-  #   cluster_name       -> name
-  #   cluster_version    -> kubernetes_version
-  name                = var.cluster_name
-  kubernetes_version  = var.kubernetes_version
+  # v21 input names
+  name               = var.cluster_name
+  kubernetes_version = var.kubernetes_version
 
   vpc_id     = var.vpc_id
   subnet_ids = var.private_subnet_ids
@@ -65,7 +131,7 @@ module "eks" {
     cpu = {
       name           = "cpu-ng"
       instance_types = [var.cpu_instance_type]
-      # AL2023 is required from 1.33 onwards
+      # For 1.33 use AL2023 variants
       ami_type       = "AL2023_x86_64_STANDARD"
       min_size       = var.cpu_min
       max_size       = var.cpu_max
@@ -95,11 +161,12 @@ module "eks" {
 #################################
 # EKS Access Entries (replaces aws-auth)
 #################################
-# Grant your admin role cluster-admin rights via access entry + policy association
 resource "aws_eks_access_entry" "admin" {
-  cluster_name   = module.eks.cluster_name
-  principal_arn  = var.admin_role_arn
-  type           = "STANDARD"
+  cluster_name  = module.eks.cluster_name
+  principal_arn = var.admin_role_arn
+  type          = "STANDARD"
+
+  depends_on = [module.eks]
 }
 
 resource "aws_eks_access_policy_association" "admin" {
@@ -123,18 +190,21 @@ resource "aws_ec2_tag" "public_cluster_shared" {
   key         = "kubernetes.io/cluster/${var.cluster_name}"
   value       = "shared"
 }
+
 resource "aws_ec2_tag" "public_role_elb" {
   for_each    = toset(var.public_subnet_ids)
   resource_id = each.value
   key         = "kubernetes.io/role/elb"
   value       = "1"
 }
+
 resource "aws_ec2_tag" "private_cluster_shared" {
   for_each    = toset(var.private_subnet_ids)
   resource_id = each.value
   key         = "kubernetes.io/cluster/${var.cluster_name}"
   value       = "shared"
 }
+
 resource "aws_ec2_tag" "private_role_internal_elb" {
   for_each    = toset(var.private_subnet_ids)
   resource_id = each.value
@@ -149,6 +219,7 @@ data "aws_eks_cluster" "this" {
   depends_on = [module.eks]
   name       = module.eks.cluster_name
 }
+
 data "aws_eks_cluster_auth" "this" {
   depends_on = [module.eks]
   name       = module.eks.cluster_name
@@ -169,8 +240,8 @@ provider "helm" {
 }
 
 #################################
-# ALB Controller IRSA role (uses IAM module v5.x)
-# (Expect a WARNING about a deprecated attribute; it's safe.)
+# ALB Controller IRSA role
+# (v5.x shows a minor deprecation warning; it's harmless)
 #################################
 module "alb_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
@@ -236,7 +307,18 @@ resource "helm_release" "nvidia_device_plugin" {
 #################################
 # Outputs
 #################################
-output "cluster_name"         { value = module.eks.cluster_name }
-output "cluster_endpoint"     { value = data.aws_eks_cluster.this.endpoint }
-output "oidc_provider_arn"    { value = module.eks.oidc_provider_arn }
-output "node_group_names"     { value = [for ng in module.eks.eks_managed_node_groups : ng.node_group_name] }
+output "cluster_name" {
+  value = module.eks.cluster_name
+}
+
+output "cluster_endpoint" {
+  value = data.aws_eks_cluster.this.endpoint
+}
+
+output "oidc_provider_arn" {
+  value = module.eks.oidc_provider_arn
+}
+
+output "node_group_names" {
+  value = [for ng in module.eks.eks_managed_node_groups : ng.node_group_name]
+}

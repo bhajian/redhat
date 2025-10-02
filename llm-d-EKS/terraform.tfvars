@@ -25,6 +25,6 @@ cpu_max           = 5
 
 enable_gpu_node_group = false
 gpu_instance_type     = "g5.xlarge"
-gpu_desired           = 0
+gpu_desired           = 1
 gpu_min               = 0
-gpu_max               = 0
+gpu_max               = 3
