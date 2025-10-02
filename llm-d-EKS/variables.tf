@@ -13,7 +13,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   type        = string
   description = "Kubernetes version"
-  default     = "1.30"
+  default     = "1.33"
 }
 
 variable "vpc_id" {
@@ -42,9 +42,20 @@ variable "cpu_instance_type" {
   default     = "m6i.large"
 }
 
-variable "cpu_desired" { type = number, default = 2 }
-variable "cpu_min"     { type = number, default = 2 }
-variable "cpu_max"     { type = number, default = 5 }
+variable "cpu_desired" {
+  type    = number
+  default = 2
+}
+
+variable "cpu_min" {
+  type    = number
+  default = 2
+}
+
+variable "cpu_max" {
+  type    = number
+  default = 5
+}
 
 variable "enable_gpu_node_group" {
   type        = bool
@@ -53,10 +64,21 @@ variable "enable_gpu_node_group" {
 }
 
 variable "gpu_instance_type" {
-  type        = string
-  default     = "g5.xlarge"
+  type    = string
+  default = "g5.xlarge"
 }
 
-variable "gpu_desired" { type = number, default = 1 }
-variable "gpu_min"     { type = number, default = 0 }
-variable "gpu_max"     { type = number, default = 3 }
+variable "gpu_desired" {
+  type    = number
+  default = 1
+}
+
+variable "gpu_min" {
+  type    = number
+  default = 0
+}
+
+variable "gpu_max" {
+  type    = number
+  default = 3
+}

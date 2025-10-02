@@ -1,6 +1,6 @@
 region          = "us-east-1"
 cluster_name    = "eks-gpu-prod"
-cluster_version = "1.30"
+cluster_version = "1.33"
 
 vpc_id = "vpc-0c5b87e00f328a749"
 
@@ -30,6 +30,6 @@ cpu_max           = 5
 # GPU (toggle later by setting enable_gpu_node_group = true)
 enable_gpu_node_group = false
 gpu_instance_type     = "g5.xlarge"
-gpu_desired           = 1
+gpu_desired           = 0
 gpu_min               = 0
 gpu_max               = 3
