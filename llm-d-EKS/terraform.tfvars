@@ -19,7 +19,7 @@ public_subnet_ids = [
 ]
 
 # FIX: Replace this entire line with the ARN of a real IAM role in your account
-admin_role_arn = "arn:aws:iam::ACCOUNT_ID:role/YourActualEKSAdminRoleName"
+admin_role_arn = "arn:aws:iam::256274107934:role/eks-role"
 
 cpu_instance_type = "m6i.large"
 cpu_desired       = 2
