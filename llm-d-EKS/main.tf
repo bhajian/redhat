@@ -97,7 +97,7 @@ module "alb_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
   version = "~> 6.0"
 
-  name_prefix = "${var.cluster_name}-alb-"
+  role_name_prefix = "${var.cluster_name}-alb-"
 
   attach_load_balancer_controller_policy = true
 
