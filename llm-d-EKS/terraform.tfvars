@@ -16,7 +16,7 @@ public_subnet_ids = [
   "subnet-0236bf8e61a22de72",
 ]
 
-admin_role_arn = "arn:aws:iam::256274107934:role/YourEKSAdminRole"
+admin_role_arn = "arn:aws:iam::256274107934:role/eks-role"
 
 cpu_instance_type = "m6i.large"
 cpu_desired       = 2
