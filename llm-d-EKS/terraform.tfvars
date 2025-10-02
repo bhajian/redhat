@@ -16,13 +16,15 @@ public_subnet_ids = [
   "subnet-0236bf8e61a22de72",
 ]
 
-admin_role_arn = "arn:aws:iam::256274107934:role/eks-role"
+# replace with your real role
+admin_role_arn = "arn:aws:iam::256274107934:role/myAmazonEKSClusterRole"
 
 cpu_instance_type = "m6i.large"
 cpu_desired       = 2
 cpu_min           = 2
 cpu_max           = 5
 
+# Turn this on later when you need GPUs
 enable_gpu_node_group = false
 gpu_instance_type     = "g5.xlarge"
 gpu_desired           = 1
