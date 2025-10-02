@@ -92,10 +92,10 @@ resource "aws_ec2_tag" "private_role_internal_elb" {
   value       = "1"
 }
 
-# --- IRSA role for AWS Load Balancer Controller (IAM module v6.x path) ---
+# --- IRSA role for AWS Load Balancer Controller (IAM module v5.x: EKS submodule) ---
 module "alb_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts"
-  version = "~> 6.0"
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "5.60.0"
 
   role_name_prefix = "${var.cluster_name}-alb-"
 
@@ -108,6 +108,7 @@ module "alb_irsa" {
     }
   }
 }
+
 
 # --- AWS Load Balancer Controller (ALB/NLB integration) ---
 resource "helm_release" "aws_load_balancer_controller" {
