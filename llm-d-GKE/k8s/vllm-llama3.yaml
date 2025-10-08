@@ -1,21 +1,3 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: vllm
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: vllm-cache
-  namespace: vllm
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 50Gi
-  # FIX: Switched to the 'standard' StorageClass which uses Immediate binding.
-  storageClassName: standard
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,17 +16,23 @@ spec:
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
-
       imagePullSecrets:
         - name: rh-pull
-
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
       tolerations:
         - key: "nvidia.com/gpu"
-          operator: "Exists"
+          operator: "Equal"
+          value: "present"
           effect: "NoSchedule"
-
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["us-central1-a"]
       initContainers:
         - name: fix-cache-perms
           image: registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -54,10 +42,9 @@ spec:
               mountPath: /home/vllm/.cache
           securityContext:
             runAsUser: 0
-
       containers:
         - name: vllm
-          image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:v0.4.3-1
+          image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3
           args:
             - "--model"
             - "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -65,9 +52,17 @@ spec:
             - "1"
             - "--port"
             - "8000"
+            - "--host"
+            - "0.0.0.0"
             - "--gpu-memory-utilization"
             - "0.90"
+            - "--download-dir"
+            - "/home/vllm/.cache"
+            - "--served-model-name"
+            - "llama3-8b"
           env:
+            - name: VLLM_LOGGING_LEVEL
+              value: "DEBUG"
             - name: HUGGING_FACE_HUB_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -75,11 +70,22 @@ spec:
                   key: HUGGING_FACE_HUB_TOKEN
             - name: HF_HOME
               value: "/home/vllm/.cache"
+            # critical so NVML is found in this image
+            - name: LD_LIBRARY_PATH
+              value: "/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64:/usr/lib64:/usr/lib:/lib64:/lib"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
           securityContext:
             runAsUser: 0
           resources:
+            requests:
+              nvidia.com/gpu: 1
+              cpu: "2"
+              memory: "12Gi"
             limits:
               nvidia.com/gpu: 1
+              cpu: "6"
+              memory: "24Gi"
           ports:
             - name: http
               containerPort: 8000
@@ -98,18 +104,3 @@ spec:
         - name: cache
           persistentVolumeClaim:
             claimName: vllm-cache
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vllm-llama3-service
-  namespace: vllm
-spec:
-  type: LoadBalancer
-  selector:
-    app: vllm-llama3
-  ports:
-    - name: http
-      port: 80
-      targetPort: http
-      

@@ -1,0 +1,24 @@
+# gpu-smoke.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-smoke
+  namespace: vllm
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-l4
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Equal"
+      value: "present"
+      effect: "NoSchedule"
+  containers:
+    - name: nvidia-smi
+      image: nvidia/cuda:12.4.1-base-ubuntu22.04
+      command: ["/bin/sh","-c"]
+      args: ["nvidia-smi && sleep 2"]
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+
