@@ -99,12 +99,11 @@ Deploy the application components in the correct order to ensure all dependencie
     kubectl get pods -n vllm -w
 
     # 4. Install the InferencePool using Helm
-    helm install vllm-llama3 \
-      --namespace vllm \
-      --set inferencePool.modelServers.matchLabels.app=vllm-llama3 \
-      --set provider.name=gke \
-      --version v1.0.1 \
-      oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+      helm install vllm-llama3-8b-instruct \
+        --set inferencePool.modelServers.matchLabels.app=vllm-llama3-8b-instruct \
+        --set provider.name=gke \
+        --version v1.0.1 \
+        oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
 
     # 5. Apply the InferenceObjective
     kubectl apply -f inference-objectives.yaml
@@ -123,7 +122,7 @@ After a few minutes, GKE will assign an external IP to your Gateway. Use the fol
     echo "Waiting for the Gateway IP address..."
     IP=""
     while [ -z "$IP" ]; do
-      IP=$(kubectl get gateway inference-gateway -n vllm -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+      IP=$(kubectl get gateway inference-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
       if [ -z "$IP" ]; then
         echo "Gateway IP not found, waiting 10 seconds..."
         sleep 10
@@ -132,7 +131,6 @@ After a few minutes, GKE will assign an external IP to your Gateway. Use the fol
     echo "Gateway IP address is: $IP"
     export GATEWAY_IP=$IP
 
-    # Send a test request
     curl http://${GATEWAY_IP}/v1/completions \
     -H "Content-Type: application/json" \
     -d '{

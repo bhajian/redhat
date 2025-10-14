@@ -2,15 +2,12 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: inference-route
-  # Add the namespace
-  namespace: vllm
 spec:
   parentRefs:
   - name: inference-gateway
   rules:
   - backendRefs:
-    # This must match your Helm release name
-    - name: vllm-llama3
+    # This MUST match your Helm release name
+    - name: vllm-llama3-8b-instruct
       group: "inference.networking.k8s.io"
       kind: InferencePool
-

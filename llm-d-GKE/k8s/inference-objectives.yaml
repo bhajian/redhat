@@ -1,14 +1,21 @@
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceObjective
 metadata:
-  # Aligned with the --served-model-name from your deployment
-  name: llama3-8b
-  # Ensure it's in the same namespace as your deployment
-  namespace: vllm
+  name: llama3-8b # Matches your --served-model-name
+spec:
+  priority: 20
+  poolRef:
+    # This MUST match your Helm release name
+    name: vllm-llama3-8b-instruct
+    group: "inference.networking.k8s.io"
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: food-review-1 # Matches the LoRA adapter from your ConfigMap
 spec:
   priority: 10
   poolRef:
-    # This name must match the name of your InferencePool Helm release
-    name: vllm-llama3
+    # This MUST match your Helm release name
+    name: vllm-llama3-8b-instruct
     group: "inference.networking.k8s.io"
-
