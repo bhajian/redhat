@@ -4,7 +4,7 @@ metadata:
   name: vllm-llama3
   namespace: vllm
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: vllm-llama3
@@ -104,3 +104,17 @@ spec:
         - name: cache
           persistentVolumeClaim:
             claimName: vllm-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-llama3-service
+  namespace: vllm
+spec:
+  type: LoadBalancer
+  selector:
+    app: vllm-llama3
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

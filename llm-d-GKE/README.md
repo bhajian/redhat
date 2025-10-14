@@ -1,103 +1,167 @@
-0) Set variables (edit as needed)
-export PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
-export REGION="us-central1"
-export ZONES="us-central1-a,us-central1-b,us-central1-c"
-export CLUSTER_NAME="vllm-cluster"
-export HF_TOKEN="<YOUR_HF_TOKEN>"     # must have access to the Llama repo
+# Deploying a VLLM Model on GKE with Inference Gateway
 
-1) Authenticate & enable APIs
-gcloud auth login
-gcloud config set project "$PROJECT_ID"
-gcloud services enable compute.googleapis.com container.googleapis.com artifactregistry.googleapis.com iam.googleapis.com serviceusage.googleapis.com
+This guide provides end-to-end instructions for provisioning a GPU-enabled GKE cluster using Terraform and deploying a large language model served by vLLM with the GKE Inference Gateway.
 
-2) (Optional but easy) Terraform service account
-gcloud iam service-accounts create tf-admin --display-name="Terraform Admin"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:tf-admin@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/owner"
+---
 
-gcloud iam service-accounts keys create ./tf-admin-key.json \
-  --iam-account="tf-admin@${PROJECT_ID}.iam.gserviceaccount.com"
-export GOOGLE_APPLICATION_CREDENTIALS="$PWD/tf-admin-key.json"
+## 📁 Project Structure
 
-3) Terraform: VPC, NAT, GKE (Standard), node pools (incl. L4), bastion
-cd infra
-# make sure terraform.tfvars has project/region/zones/cluster_name matching your vars
-terraform init
-terraform apply -auto-approve
+    .
+    ├── k8s/
+    │   ├── gateway.yaml
+    │   ├── httproute.yaml
+    │   ├── inference-objectives.yaml
+    │   └── vllm-deployment.yaml
+    ├── terraform/
+    │   ├── gke.tf
+    │   ├── provider.tf
+    │   └── vpc.tf
+    └── README.md
 
-4) Kube context to the new cluster
-gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$REGION" --project "$PROJECT_ID"
-kubectl get nodes -L cloud.google.com/gke-accelerator
+---
 
-5) Install NVIDIA GPU Operator (driver + toolkit + device plugin)
-helm repo add nvidia https://nvidia.github.io/gpu-operator
-helm repo update
-kubectl create ns gpu-operator
-helm upgrade --install gpu-operator nvidia/gpu-operator -n gpu-operator \
-  --set driver.enabled=true --set toolkit.enabled=true --set devicePlugin.enabled=true
+## 1. Local Environment Setup
 
-# wait until Ready
-kubectl -n gpu-operator get pods -w
-kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" => "}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}'
+First, install the necessary command-line tools on your local machine (macOS).
 
-6) Deploy vLLM (namespace, secrets, manifests)
-kubectl create ns vllm
+    # Install Homebrew (if you don't have it)
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# HF token (needed for Llama; skip if you’re using a permissive model)
-kubectl -n vllm create secret generic hf-secret \
-  --from-literal=HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+    # Install Google Cloud SDK, Terraform, and Helm
+    brew install --cask google-cloud-sdk
+    brew install terraform
+    brew install helm
 
-# (Optional) Red Hat registry pull secret if your Deployment uses registry.redhat.io
-# kubectl -n vllm create secret docker-registry rh-pull \
-#   --docker-server=registry.redhat.io \
-#   --docker-username="<your_rh_username>" \
-#   --docker-password="<your_rh_pull_token>" \
-#   --docker-email="you@example.com"
+    # Initialize the gcloud CLI
+    gcloud init
 
-# Apply your manifests (PVC, Deployment, Service)
-cd ../k8s
-kubectl apply -f .
+    # Set up credentials for Terraform and other applications
+    gcloud auth application-default login
 
-7) Watch rollout & verify GPU is attached
-kubectl -n vllm get pods -w
-POD=$(kubectl -n vllm get pod -l app=vllm-llama3 -o jsonpath='{.items[0].metadata.name}')
-kubectl -n vllm describe pod "$POD" | sed -n '/Allocated resources:/,/Events:/p'   # look for nvidia.com/gpu: 1
+    # Enable the required APIs for your GCP project
+    gcloud services enable container.googleapis.com \
+      compute.googleapis.com \
+      networkservices.googleapis.com
 
-8) Get the external IP and test the API
-kubectl -n vllm get svc
-IP=$(kubectl -n vllm get svc vllm-llama3-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+---
 
-curl "http://$IP/v1/models"
-curl -s "http://$IP/v1/chat/completions" \
-  -H "Content-Type: application/json" -H "Authorization: Bearer dummy" \
-  -d '{"model":"llama3-8b","messages":[{"role":"user","content":"Hello from L4 on GKE"}]}'
+## 2. Deploy Infrastructure with Terraform
 
-9) (If downloads are blocked) Preload or enable egress
+These steps will create the VPC, subnets, GKE cluster, and GPU node pool.
 
-To allow online download: ensure NAT/egress is open and set:
+    # Navigate to the Terraform directory
+    cd terraform
 
-kubectl -n vllm set env deploy vllm-llama3 TRANSFORMERS_OFFLINE=0 HF_HUB_OFFLINE=0 HF_HOME=/home/vllm/.cache HF_HUB_ENABLE_HF_TRANSFER=1
+    # Initialize Terraform to download the necessary providers
+    terraform init
 
+    # Apply the configuration to build your infrastructure
+    terraform apply
 
-To run offline: use the initContainer preload method we used earlier, then set TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1.
+---
 
-10) Teardown (when done)
-cd ../infra
-terraform destroy
+## 3. Configure Kubernetes (kubectl)
 
-Quick “it’s broken” checklist
-# GPU visible?
-kubectl get nodes -L cloud.google.com/gke-accelerator
-kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" => "}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}'
+Connect your local `kubectl` to the newly created GKE cluster.
 
-# GPU operator healthy?
-kubectl -n gpu-operator get pods
-kubectl -n vllm describe pod -l app=vllm-llama3 | sed -n '/Allocated resources:/,/Events:/p'
+    # Get the credentials for your GKE cluster
+    gcloud container clusters get-credentials vllm-cluster --region us-central1
 
-# Hugging Face egress?
-kubectl -n vllm exec -it "$POD" -- bash -lc 'curl -sI https://huggingface.co | head -n1'
+    # Verify the connection
+    kubectl get nodes
 
+    # Enable the GKE Gateway Controller
+    gcloud container clusters update vllm-cluster \
+      --region=us-central1 \
+      --gateway-api=standard
 
-That’s it—run straight through and you’re online. If you want me to collapse this into a one-click Makefile (make bootstrap, make deploy), say the word and I’ll draft it.
+---
 
+## 4. Deploy the GKE Inference Gateway and VLLM
+
+Deploy the application components in the correct order to ensure all dependencies are met.
+
+    # Navigate to the Kubernetes manifests directory
+    cd ../k8s
+
+    # 1. Create the namespace
+    kubectl create namespace vllm
+
+    # 2. Create the Hugging Face secret
+    kubectl create secret generic hf-secret \
+      --namespace vllm \
+      --from-literal=HUGGING_FACE_HUB_TOKEN=hf_YOUR_TOKEN_HERE
+
+    # 3. Deploy the VLLM model server
+    kubectl apply -f vllm-deployment.yaml
+
+    # Wait for pod readiness
+    kubectl get pods -n vllm -w
+
+    # 4. Install the InferencePool using Helm
+    helm install vllm-llama3 \
+      --namespace vllm \
+      --set inferencePool.modelServers.matchLabels.app=vllm-llama3 \
+      --set provider.name=gke \
+      --version v1.0.1 \
+      oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+
+    # 5. Apply the InferenceObjective
+    kubectl apply -f inference-objectives.yaml
+
+    # 6. Create the Gateway and HTTPRoute
+    kubectl apply -f gateway.yaml
+    kubectl apply -f httproute.yaml
+
+---
+
+## 5. Test the Endpoint
+
+After a few minutes, GKE will assign an external IP to your Gateway. Use the following commands to test your model.
+
+    # Get the Gateway IP Address
+    echo "Waiting for the Gateway IP address..."
+    IP=""
+    while [ -z "$IP" ]; do
+      IP=$(kubectl get gateway inference-gateway -n vllm -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
+      if [ -z "$IP" ]; then
+        echo "Gateway IP not found, waiting 10 seconds..."
+        sleep 10
+      fi
+    done
+    echo "Gateway IP address is: $IP"
+    export GATEWAY_IP=$IP
+
+    # Send a test request
+    curl http://${GATEWAY_IP}/v1/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "llama3-8b",
+        "prompt": "The capital of Canada is",
+        "max_tokens": 50,
+        "temperature": 0
+    }'
+
+---
+
+## 6. Cleanup
+
+To avoid ongoing costs, destroy all the resources when you're finished.
+
+    # Delete Kubernetes resources
+    cd ../k8s
+    kubectl delete -f httproute.yaml
+    kubectl delete -f gateway.yaml
+    kubectl delete -f inference-objectives.yaml
+    helm uninstall vllm-llama3 -n vllm
+    kubectl delete -f vllm-deployment.yaml
+    kubectl delete namespace vllm
+
+    # Destroy the cloud infrastructure
+    cd ../terraform
+    terraform destroy
+
+---
+
+**Done!**  
+You’ve deployed a scalable vLLM model on Google Kubernetes Engine with the Inference Gateway.

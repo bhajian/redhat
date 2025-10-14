@@ -1,0 +1,14 @@
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  # Aligned with the --served-model-name from your deployment
+  name: llama3-8b
+  # Ensure it's in the same namespace as your deployment
+  namespace: vllm
+spec:
+  priority: 10
+  poolRef:
+    # This name must match the name of your InferencePool Helm release
+    name: vllm-llama3
+    group: "inference.networking.k8s.io"
+
