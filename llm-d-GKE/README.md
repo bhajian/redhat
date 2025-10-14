@@ -1,4 +1,4 @@
-# Deploying a VLLM Model on GKE with Inference Gateway
+# Deploying a llm-d Model on GKE with Inference Gateway
 
 This guide provides end-to-end instructions for provisioning a GPU-enabled GKE cluster using Terraform and deploying a large language model served by vLLM with the GKE Inference Gateway.
 
