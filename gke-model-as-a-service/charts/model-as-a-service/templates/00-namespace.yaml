@@ -4,3 +4,5 @@ metadata:
   name: {{ .Values.nameSpace }}
   labels:
     app.kubernetes.io/name: {{ .Values.appName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"

@@ -1,17 +1,23 @@
-# Model-as-a-Service on GKE with Argo CD, vLLM, Gateway API Inference Extension, and LiteLLM
+# Model-as-a-Service on GKE with Argo CD, Kustomize/Helm, vLLM, Gateway Inference Extension, and LiteLLM
 
-This repo lets you deploy any model by dropping a single YAML file in `models/`.
-Each file becomes a fully working namespace with:
-- vLLM server(s)
-- Gateway API InferenceExtension InferencePool + external HTTP Gateway
-- LiteLLM sitting in front for token counting, rate limiting, etc.
+**What you get**  
+Drop a file into `models/` (e.g., `llama-3_2-8b.yaml`) and Argo CD will:
 
-## Prereqs
+1. Create a *new namespace* for that model  
+2. **Copy your HF token** from the `default` namespace into the new namespace (automated)  
+3. Deploy **vLLM** (GPU-ready) labeled for the InferencePool  
+4. Install the **Gateway API – Inference Extension** *InferencePool* OCI chart to balance endpoints  
+5. Create an external **HTTP Gateway**  
+6. Deploy **LiteLLM** in front of the Gateway for token counting, rate limiting, etc.
 
-- GKE cluster with GPU node pool (NVIDIA drivers + runtime).
-- Argo CD installed on the cluster and pointed at this repo.
-- Gateway API (standard) enabled on GKE (Regional External Managed).
-- Argo CD Helm OCI enabled (see `apps/argocd-cm.yaml`).
+---
+
+## Prerequisites
+
+- **GKE cluster** with a **GPU node pool** (NVIDIA drivers/runtime installed)
+- **kubectl** access to the cluster
+- **Argo CD** installed on the cluster + **argocd** CLI on your laptop
+- (Optional) **kustomize** locally for render checks
 
 ## Quick start
 

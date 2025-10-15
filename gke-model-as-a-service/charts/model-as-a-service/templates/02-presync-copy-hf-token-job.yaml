@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: copy-hf-token
+  namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      serviceAccountName: secret-copier
+      restartPolicy: Never
+      containers:
+        - name: copier
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              echo "Copying secret 'hf-token' from default to {{ .Values.nameSpace }}..."
+              # Fetch the secret yaml from default
+              kubectl get secret hf-token -n default -o yaml > /tmp/src.yaml
+              # Replace namespace and remove managed fields/uid/resourceVersion
+              awk '
+                $1=="namespace:"{$2="{{ .Values.nameSpace }}"}
+                $1=="uid:"{next}
+                $1=="resourceVersion:"{next}
+                $1=="creationTimestamp:"{next}
+                $1=="managedFields:"{skip=1; next}
+                skip && $0 ~ /^  .*$/ {next}
+                skip && $0 !~ /^  .*$/ {skip=0}
+                {print}
+              ' /tmp/src.yaml > /tmp/dst.yaml
+              # Apply into target namespace
+              kubectl apply -f /tmp/dst.yaml -n {{ .Values.nameSpace }}
+              echo "Done."

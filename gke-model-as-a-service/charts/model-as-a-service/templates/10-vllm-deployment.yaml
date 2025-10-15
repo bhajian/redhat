@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: {{ .Values.appLabel }}
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   replicas: {{ .Values.vllm.replicas }}
   selector:
@@ -32,6 +34,11 @@ spec:
             - "{{ . }}"
             {{- end }}
           env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vllm.hfTokenSecretName }}
+                  key: HF_TOKEN
             {{- range .Values.vllm.env }}
             - name: {{ .name }}
               {{- if .value }}

@@ -15,7 +15,7 @@ vllm:
   dtype: "auto"
   env: []
   extraArgs: []
-  hfTokenSecretName: ""
+  hfTokenSecretName: "hf-token"
 
 gateway:
   className: gke-l7-regional-external-managed

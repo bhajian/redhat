@@ -25,7 +25,6 @@ spec:
         syncOptions:
           - CreateNamespace=true
       sources:
-        # 1) Local Helm chart for vLLM, Gateway, LiteLLM
         - repoURL: https://github.com/<you>/model-as-a-service.git
           targetRevision: HEAD
           path: charts/model-as-a-service
@@ -33,7 +32,6 @@ spec:
             valueFiles:
               - "{{path}}"
 
-        # 2) OCI Helm chart for InferencePool (Gateway API Inference Extension)
         - chart: inferencepool
           repoURL: oci://registry.k8s.io/gateway-api-inference-extension/charts
           targetRevision: v1.0.1

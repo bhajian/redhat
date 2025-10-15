@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: litellm
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   selector:
     app: litellm

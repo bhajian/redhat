@@ -4,7 +4,8 @@ kind: InferenceObjective
 metadata:
   name: {{ .Values.objective.name }}
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   description: {{ .Values.objective.description | quote }}
-  # extend with SLOs/weights as needed
 {{- end }}

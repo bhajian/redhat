@@ -3,6 +3,8 @@ kind: Gateway
 metadata:
   name: inference-gateway
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   gatewayClassName: {{ .Values.gateway.className }}
   listeners:

@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: litellm
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   replicas: {{ .Values.litellm.replicas }}
   selector:

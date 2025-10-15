@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: litellm-config
   namespace: {{ .Values.nameSpace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 data:
   config.yaml: |
     model_list:
@@ -13,6 +15,3 @@ data:
           api_key: "not-required"
     telemetry: false
     routing_strategy: simple-shuffle
-    # basic rate limiting (in-proc); switch to Redis for production
-    general_settings:
-      set_verbose: false
