@@ -71,9 +71,16 @@ When prompted, type `yes`.
 
 ## 2) Connect kubectl to the AKS Cluster
 
+Copy the terraform successful output to these variables
+
 ```bash
 RG="ben-aks-rg-settled-treefrog"
 CLUSTER="ben-aks-aks"
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+
 
 az aks get-credentials -g "$RG" -n "$CLUSTER"
 kubectl get nodes -o wide
