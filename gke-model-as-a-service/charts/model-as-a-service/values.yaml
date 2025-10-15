@@ -1,0 +1,37 @@
+nameSpace: default-model
+appName: default
+appLabel: vllm-default
+providerName: gke
+
+vllm:
+  replicas: 1
+  image: vllm/vllm-openai:latest
+  imagePullPolicy: IfNotPresent
+  resources: {}
+  model: ""
+  servedModelName: ""
+  tensorParallelSize: 1
+  maxModelLen: 4096
+  dtype: "auto"
+  env: []
+  extraArgs: []
+  hfTokenSecretName: ""
+
+gateway:
+  className: gke-l7-regional-external-managed
+  port: 80
+  name: http
+
+litellm:
+  image: ghcr.io/berriai/litellm:latest
+  replicas: 1
+  port: 4000
+  env: []
+
+objective:
+  enabled: false
+  name: objective
+  description: ""
+
+service:
+  vllmPort: 8000

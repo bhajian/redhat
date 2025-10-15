@@ -1,0 +1,14 @@
+name: Validate YAML
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+jobs:
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: sudo pip install yamllint
+      - name: Lint
+        run: yamllint .

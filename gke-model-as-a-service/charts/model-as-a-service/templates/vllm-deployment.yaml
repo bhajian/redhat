@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.appLabel }}
+  namespace: {{ .Values.nameSpace }}
+spec:
+  replicas: {{ .Values.vllm.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.appLabel }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appLabel }}
+    spec:
+      containers:
+        - name: vllm
+          image: {{ .Values.vllm.image }}
+          imagePullPolicy: {{ .Values.vllm.imagePullPolicy }}
+          args:
+            - "python"
+            - "-m"
+            - "vllm.entrypoints.openai.api_server"
+            - "--host=0.0.0.0"
+            - "--port={{ .Values.service.vllmPort }}"
+            - "--model={{ .Values.vllm.model }}"
+            - "--served-model-name={{ .Values.vllm.servedModelName }}"
+            - "--tensor-parallel-size={{ .Values.vllm.tensorParallelSize }}"
+            - "--max-model-len={{ .Values.vllm.maxModelLen }}"
+            - "--dtype={{ .Values.vllm.dtype }}"
+            {{- range .Values.vllm.extraArgs }}
+            - "{{ . }}"
+            {{- end }}
+          env:
+            {{- range .Values.vllm.env }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: "{{ .value }}"
+              {{- else if .valueFrom }}
+              valueFrom: {{ toYaml .valueFrom | nindent 16 }}
+              {{- end }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.service.vllmPort }}
+          resources:
+            {{- toYaml .Values.vllm.resources | nindent 12 }}

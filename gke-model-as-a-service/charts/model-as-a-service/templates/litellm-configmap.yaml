@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: {{ .Values.nameSpace }}
+data:
+  config.yaml: |
+    model_list:
+      - model_name: {{ .Values.vllm.servedModelName }}
+        litellm_params:
+          model: openai/custom
+          api_base: "http://inference-gateway.{{ .Values.nameSpace }}.svc.cluster.local"
+          api_key: "not-required"
+    telemetry: false
+    routing_strategy: simple-shuffle
+    # basic rate limiting (in-proc); switch to Redis for production
+    general_settings:
+      set_verbose: false

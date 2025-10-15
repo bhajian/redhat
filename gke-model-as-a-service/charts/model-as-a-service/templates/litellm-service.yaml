@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  namespace: {{ .Values.nameSpace }}
+spec:
+  selector:
+    app: litellm
+  ports:
+    - port: {{ .Values.litellm.port }}
+      targetPort: {{ .Values.litellm.port }}
+      name: http
+  type: ClusterIP
