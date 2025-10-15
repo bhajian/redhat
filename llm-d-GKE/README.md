@@ -93,7 +93,7 @@ Deploy the application components in the correct order to ensure all dependencie
       --from-literal=HUGGING_FACE_HUB_TOKEN=hf_YOUR_TOKEN_HERE
 
     # 3. Deploy the VLLM model server
-    kubectl apply -f vllm-deployment.yaml
+    kubectl apply -f vllm-llama3.yaml
 
     # Wait for pod readiness
     kubectl get pods -n vllm -w
@@ -152,7 +152,7 @@ To avoid ongoing costs, destroy all the resources when you're finished.
     kubectl delete -f gateway.yaml
     kubectl delete -f inference-objectives.yaml
     helm uninstall vllm-llama3 -n vllm
-    kubectl delete -f vllm-deployment.yaml
+    kubectl delete -f vllm-llama3.yaml
     kubectl delete namespace vllm
 
     # Destroy the cloud infrastructure
