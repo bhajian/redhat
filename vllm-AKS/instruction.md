@@ -58,6 +58,8 @@ Assuming you have the following files from this repo:
 - `providers.tf`, `main.tf`, `aks.tf`, `identity.tf`, `networking.tf`, `bastion.tf`, `variables.tf`, `outputs.tf`
 
 ```bash
+export ARM_SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+
 # Initialize and apply Terraform
 terraform init
 terraform apply
