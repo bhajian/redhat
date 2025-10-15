@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm-{{ .Values.model.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.litellm.replicas }}
+  selector:
+    matchLabels:
+      app: litellm-{{ .Values.model.name }}
+  template:
+    metadata:
+      labels:
+        app: litellm-{{ .Values.model.name }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: litellm
+          image: {{ .Values.litellm.image }}
+          args: ["litellm","--config","/etc/litellm/config.yaml","--port","4000","--config-file-auto-refresh"]
+          ports:
+            - name: http
+              containerPort: 4000
+          volumeMounts:
+            - name: cfg
+              mountPath: /etc/litellm
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+      volumes:
+        - name: cfg
+          configMap:
+            name: litellm-config
+            items:
+              - key: config.yaml
+                path: config.yaml

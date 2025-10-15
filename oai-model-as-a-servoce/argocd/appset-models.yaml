@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: llm-models
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/<org>/<repo>.git
+        revision: main
+        directories:
+          - path: models/*       # each folder here is a model service
+  template:
+    metadata:
+      name: '{{path.basename}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/<org>/<repo>.git
+        targetRevision: main
+        chart: charts/model-as-a-service
+        helm:
+          valueFiles:
+            - '{{path}}/values.yaml'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-openshift-ingress
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: litellm-{{ .Values.model.name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - port: 4000
+          protocol: TCP

@@ -1,0 +1,13 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: litellm-{{ .Values.model.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  to:
+    kind: Service
+    name: litellm-{{ .Values.model.name }}
+  port:
+    targetPort: http
+  tls:
+    termination: edge

@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vllm-runtime
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<org>/<repo>.git
+    targetRevision: main
+    path: apps/runtime
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redhat-ods-applications
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

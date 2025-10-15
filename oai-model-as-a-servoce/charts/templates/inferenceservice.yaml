@@ -1,0 +1,31 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: {{ .Values.model.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    opendatahub.io/dashboard: "true"
+  annotations:
+    openshift.io/display-name: {{ .Values.model.displayName | quote }}
+    serving.kserve.io/deploymentMode: RawDeployment
+spec:
+  predictor:
+    minReplicas: {{ .Values.model.minReplicas }}
+    maxReplicas: {{ .Values.model.maxReplicas }}
+    model:
+      name: ""
+      runtime: {{ .Values.model.runtimeName }}
+      modelFormat:
+        name: vLLM
+      storageUri: {{ .Values.model.storageUri | quote }}
+      resources:
+        requests:
+          cpu: {{ .Values.model.resources.requests.cpu | quote }}
+          memory: {{ .Values.model.resources.requests.memory | quote }}
+          nvidia.com/gpu: {{ .Values.model.resources.requests.gpu | quote }}
+        limits:
+          cpu: {{ .Values.model.resources.limits.cpu | quote }}
+          memory: {{ .Values.model.resources.limits.memory | quote }}
+          nvidia.com/gpu: {{ .Values.model.resources.limits.gpu | quote }}
+    tolerations:
+{{- toYaml .Values.model.tolerations | nindent 6 }}
