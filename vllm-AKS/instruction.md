@@ -91,7 +91,14 @@ kubectl get nodes -o wide
 ## 3) Add an A10 GPU Node Pool
 
 ```bash
-az aks nodepool add   --resource-group "$RG"   --cluster-name "$CLUSTER"   --name gpua10   --node-vm-size Standard_NV24ads_A10_v5   --node-count 1   --labels gpu=true   --node-taints sku=gpu:NoSchedule
+az aks nodepool add \
+  --resource-group "$RG" \
+  --cluster-name "$CLUSTER" \
+  --name gpua10 \
+  --node-vm-size Standard_NV36ads_A10_v5 \
+  --node-count 1 \
+  --labels gpu=true \
+  --node-taints sku=gpu:NoSchedule
 ```
 
 Verify:
