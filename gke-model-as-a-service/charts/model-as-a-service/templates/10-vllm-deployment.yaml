@@ -15,6 +15,18 @@ spec:
       labels:
         app: {{ .Values.appLabel }}
     spec:
+      {{- if .Values.vllm.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.vllm.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.vllm.tolerations }}
+      tolerations:
+        {{- toYaml .Values.vllm.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.vllm.affinity }}
+      affinity:
+        {{- toYaml .Values.vllm.affinity | nindent 8 }}
+      {{- end }}
       containers:
         - name: vllm
           image: {{ .Values.vllm.image }}

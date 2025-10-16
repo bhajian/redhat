@@ -1,43 +1,65 @@
-# Application/namespace identity
+# Application & namespace identity
 nameSpace: llama-3-2-8b
 appName: llama-3-2-8b
 providerName: gke
 appLabel: vllm-llama3-2-8b
 
-# vLLM specifics
+# vLLM server configuration
 vllm:
   replicas: 2
-  image: "vllm/vllm-openai:latest"
+  image: "vllm/vllm-openai:v0.6.2"        # pin a known-good tag
   imagePullPolicy: IfNotPresent
+
+  # GPU & CPU resources (1x NVIDIA GPU per pod)
   resources:
     limits:
       nvidia.com/gpu: 1
       cpu: "4"
-      memory: "16Gi"
+      memory: "20Gi"
     requests:
       nvidia.com/gpu: 1
       cpu: "2"
-      memory: "12Gi"
+      memory: "16Gi"
+
+  # GKE GPU scheduling hints (adjust to your nodepool)
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-l4
+  tolerations:
+    - key: "nvidia.com/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+  # Model & runtime
   model: "meta-llama/Llama-3.2-8B-Instruct"
   servedModelName: "llama3-2-8b"
   tensorParallelSize: 1
   maxModelLen: 8192
   dtype: "auto"
+
+  # Secret name to pull HF token from (auto-copied to this namespace by PreSync job)
   hfTokenSecretName: "hf-token"
+
+  # Extra environment (add more if you need)
   env:
     - name: VLLM_WORKER_MULTIPROC_METHOD
       value: "spawn"
+
+  # Useful performance flags
   extraArgs:
     - "--max-num-seqs=256"
+    - "--max-num-batched-tokens=8192"
     - "--gpu-memory-utilization=0.92"
+    - "--disable-log-stats"
 
+# Gateway (Gateway API) — class should be your external managed GatewayClass on GKE
 gateway:
   className: gke-l7-regional-external-managed
   port: 80
   name: http
 
+# LiteLLM in front of the Inference Gateway
 litellm:
-  image: "ghcr.io/berriai/litellm:latest"
+  image: "ghcr.io/berriai/litellm:v1.45.8"  # pin a tag
   replicas: 1
   port: 4000
   env:
@@ -49,7 +71,9 @@ litellm:
       value: "300000"
     - name: LITELLM_RATELIMIT_RPM
       value: "1800"
+    # For real rate limiting or logging at scale, point LiteLLM to Redis/DB via env here.
 
+# Optional: objective for traffic policy / SLOs (can extend later)
 objective:
   enabled: true
   name: llama3-2-8b

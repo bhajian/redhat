@@ -6,7 +6,7 @@ metadata:
 spec:
   generators:
     - git:
-        repoURL: https://github.com/<you>/model-as-a-service.git
+        repoURL: https://github.com/bhajian/model-as-a-service.git
         revision: HEAD
         files:
           - path: models/*.yaml
@@ -25,13 +25,15 @@ spec:
         syncOptions:
           - CreateNamespace=true
       sources:
-        - repoURL: https://github.com/<you>/model-as-a-service.git
+        # 1) Local Helm chart that deploys namespace, secret-copy PreSync job, vLLM, Gateway, LiteLLM
+        - repoURL: https://github.com/bhajian/model-as-a-service.git
           targetRevision: HEAD
           path: charts/model-as-a-service
           helm:
             valueFiles:
-              - "{{path}}"
+              - "{{path}}"   # the model file (e.g., models/llama-3_2-8b.yaml)
 
+        # 2) InferencePool (Gateway API Inference Extension) — installed in same namespace
         - chart: inferencepool
           repoURL: oci://registry.k8s.io/gateway-api-inference-extension/charts
           targetRevision: v1.0.1
@@ -39,6 +41,8 @@ spec:
             releaseName: "vllm-{{appName}}-pool"
             parameters:
               - name: provider.name
-                value: "{{providerName}}"
+                value: "{{providerName}}"              # e.g., gke
               - name: inferencePool.modelServers.matchLabels.app
-                value: "{{appLabel}}"
+                value: "{{appLabel}}"                   # MUST match your vLLM Deployment label
+              - name: inferenceExtension.monitoring.gke.enabled
+                value: "true"

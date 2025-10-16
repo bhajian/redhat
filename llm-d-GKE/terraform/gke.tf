@@ -29,7 +29,7 @@ resource "google_container_node_pool" "gpu_pool" {
   name       = "l4-gpu-pool"
   cluster    = google_container_cluster.primary.name
   location   = google_container_cluster.primary.location
-  node_count = 1
+  node_count = 0
 
   node_locations = [
     "us-central1-a"

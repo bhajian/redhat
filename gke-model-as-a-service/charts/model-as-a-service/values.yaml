@@ -13,9 +13,16 @@ vllm:
   tensorParallelSize: 1
   maxModelLen: 4096
   dtype: "auto"
+
+  # Secret the PreSync Job will copy from `default` into this namespace
+  hfTokenSecretName: "hf-token"
+
+  # Optional extras (safe defaults)
   env: []
   extraArgs: []
-  hfTokenSecretName: "hf-token"
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 gateway:
   className: gke-l7-regional-external-managed
