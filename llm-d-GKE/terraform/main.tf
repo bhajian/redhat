@@ -142,9 +142,10 @@ resource "google_container_node_pool" "gpu_pool" {
   name       = "l4-gpu-pool"
   cluster    = google_container_cluster.primary.name
   location   = google_container_cluster.primary.location
-  node_count = 0
+  node_count = 1
 
-  node_locations = ["${var.region}-a"] # pick a zone that supports L4
+  # REMOVE THIS LINE:
+  # node_locations = ["${var.region}-a"] # pick a zone that supports L4
 
   node_config {
     machine_type = "g2-standard-8"
