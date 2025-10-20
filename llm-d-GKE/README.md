@@ -96,6 +96,17 @@ Deploy the application components in the correct order to ensure all dependencie
     # Wait for pod readiness
     kubectl get pods -w
 
+    # Install the Base Gateway API CRDs
+      ```
+      kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+      ```
+
+    # Install the Inference Extension CRDs
+      ```
+      kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
+      ```
+
+
     # 4. Install the InferencePool using Helm
       helm install vllm-llama3-8b-instruct \
         --set inferencePool.modelServers.matchLabels.app=vllm-llama3-8b-instruct \
