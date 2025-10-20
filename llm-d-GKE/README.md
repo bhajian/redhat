@@ -84,19 +84,17 @@ Deploy the application components in the correct order to ensure all dependencie
     # Navigate to the Kubernetes manifests directory
     cd ../k8s
 
-    # 1. Create the namespace
-    kubectl create namespace vllm
+    
 
     # 2. Create the Hugging Face secret
     kubectl create secret generic hf-secret \
-      --namespace vllm \
       --from-literal=HUGGING_FACE_HUB_TOKEN=hf_YOUR_TOKEN_HERE
 
     # 3. Deploy the VLLM model server
     kubectl apply -f vllm-llama3.yaml
 
     # Wait for pod readiness
-    kubectl get pods -n vllm -w
+    kubectl get pods -w
 
     # 4. Install the InferencePool using Helm
       helm install vllm-llama3-8b-instruct \
