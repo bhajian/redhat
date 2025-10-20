@@ -87,7 +87,7 @@ Deploy the application components in the correct order to ensure all dependencie
     
 
     # 2. Create the Hugging Face secret
-    kubectl create secret generic hf-secret \
+    kubectl create secret generic hf-token \
       --from-literal=HUGGING_FACE_HUB_TOKEN=hf_YOUR_TOKEN_HERE
 
     # 3. Deploy the VLLM model server
