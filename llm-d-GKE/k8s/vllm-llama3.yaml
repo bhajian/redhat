@@ -39,7 +39,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: hf-token
-                  key: token
+                  key: HUGGING_FACE_HUB_TOKEN
             - name: VLLM_ALLOW_RUNTIME_LORA_UPDATING
               value: "true"
           ports:
