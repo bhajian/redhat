@@ -40,8 +40,6 @@ spec:
                 secretKeyRef:
                   name: hf-token
                   key: HUGGING_FACE_HUB_TOKEN
-            - name: VLLM_ALLOW_RUNTIME_LORA_UPDATING
-              value: "true"
           ports:
             - containerPort: 8000
               name: http
@@ -55,21 +53,21 @@ spec:
               path: /health
               port: http
               scheme: HTTP
-            periodSeconds: 1
+            periodSeconds: 10
             successThreshold: 1
             failureThreshold: 5
-            timeoutSeconds: 1
+            timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /health
               port: http
               scheme: HTTP
-            periodSeconds: 1
+            periodSeconds: 10
             successThreshold: 1
             # vLLM has a very simple health implementation, which means that any failure is
             # likely significant,
             failureThreshold: 1
-            timeoutSeconds: 1
+            timeoutSeconds: 10
           # We set a startup probe so that we don't begin directing traffic or checking
           # liveness to this instance until the model is loaded.
           startupProbe:
@@ -92,19 +90,7 @@ spec:
               name: shm
             - name: adapters
               mountPath: "/adapters"
-      initContainers:
-        - name: lora-adapter-syncer
-          tty: true
-          stdin: true 
-          image: registry.k8s.io/gateway-api-inference-extension/lora-syncer:v1.0.1
-          restartPolicy: Always
-          imagePullPolicy: Always
-          env: 
-            - name: DYNAMIC_LORA_ROLLOUT_CONFIG
-              value: "/config/configmap.yaml"
-          volumeMounts:
-          - name: config-volume
-            mountPath:  /config
+      
       restartPolicy: Always
       enableServiceLinks: false
       terminationGracePeriodSeconds: 130
