@@ -24,7 +24,7 @@ Gateway (smart routing):
 
 python3 kv_latency_demo.py \
   --file prompts.txt \
-  --index 10 \
+  --index 1 \
   --mode gw \
   --gw-url http://128.203.121.47 \
   --model "Qwen/Qwen3-0.6B" \
@@ -38,7 +38,7 @@ LoadBalancer (round-robin; fresh TCP per call):
 
 python3 kv_latency_demo.py \
   --file prompts.txt \
-  --index 11 \
+  --index 2 \
   --mode lb \
   --lb-url http://4.156.35.174 \
   --model "Qwen/Qwen3-0.6B" \

@@ -1,115 +1,224 @@
-# make_prompts.py
-import os, json, time, re, csv, sys
-from typing import Tuple
-from openai import OpenAI
+#!/usr/bin/env python3
+"""
+make_prompts.py
+Generates 100 benchmark rows with a long shared context for KV/prefix-caching tests.
 
-OUTFILE = "prompts.txt"   # CSV: prompt1,prompt2,topic
-NUM_PAIRS = 1000
-MODEL = "gpt-4o-mini"     # adjust as you wish
+Output: prompts.txt
+Format (pipe-delimited, one row per line):
+prompt1|prompt2|topic
 
-client = OpenAI()  # reads OPENAI_API_KEY from env
+- prompt1 ≈ 1000 "tokens" (approx words)
+- prompt2 = prompt1 + ~250 more tokens (same topic, follow-up / continuation)
+- No '|' characters in any prompt; newlines are collapsed to spaces.
+- Deterministic offline mode by default (no API required).
+- Optional --openai mode to ask an LLM to draft the base content per topic.
+"""
 
-SYSTEM = (
-    "You generate benchmark prompt PAIRS for latency testing.\n"
-    "- Output ONLY JSON with keys: prompt1, prompt2, topic.\n"
-    "- The two prompts must be closely related to EACH OTHER (same topic), "
-    "  but every CALL must use a brand-new topic never used before.\n"
-    "- Each prompt MUST be ~20–30 words (acceptable range 18–32).\n"
-    "- DO NOT use commas in either prompt. Avoid punctuation that acts like commas.\n"
-    "- The 'topic' is a short 2–5 word label (no commas) summarizing the pair.\n"
-    "- Do not include explanations or extra fields."
-)
+import argparse
+import random
+import re
+import sys
+from pathlib import Path
+from typing import List, Tuple
 
-USER_TEMPLATE = (
-    "Produce a new JSON object for pair #{i} with a UNIQUE topic not used before.\n"
-    "Return ONLY JSON (no backticks, no prose)."
-)
+# ---------------- Config ----------------
+DEFAULT_ROWS = 100
+PROMPTS_PATH = Path("prompts.txt")
+DELIM = "|"
+TARGET_TOKENS_P1 = 1000
+TARGET_TOKENS_P2_EXTRA = 250
+RNG_SEED = 42  # deterministic
 
-def wc(s: str) -> int:
-    return len(re.findall(r"\b\w+\b", s))
+# A pool of diverse topics (100+). Each row uses a unique topic.
+TOPIC_SEEDS = [
+    "quantitative risk management", "urban mobility planning", "renewable energy storage",
+    "low-latency trading infrastructure", "satellite image segmentation", "ocean microplastics",
+    "edge computing for retail", "smart grid demand response", "supply chain resilience",
+    "gene expression analysis", "privacy-preserving analytics", "real-time fraud detection",
+    "autonomous warehouse robotics", "neural search for support", "time-series forecasting",
+    "drug discovery pipelines", "disaster early warning", "agritech yield optimization",
+    "space weather prediction", "speech emotion recognition", "telemedicine triage systems",
+    "cyber threat intelligence", "battery health monitoring", "wind farm layout optimization",
+    "financial document parsing", "credit risk explainability", "protein structure insights",
+    "personalized education pathways", "climate risk scenarioing", "air quality forecasting",
+    "computer vision for safety", "market microstructure analysis", "vector databases in prod",
+    "continuous deployment safety", "energy arbitrage modeling", "sports analytics strategy",
+    "multilingual retrieval QA", "semantic code search", "observability at scale",
+    "incident postmortem analytics", "pricing optimization engines", "quantum-inspired heuristics",
+    "material science discovery", "clinical trial matching", "road traffic anomaly detection",
+    "recommendation systems fairness", "smart building automation", "portfolio optimization",
+    "geospatial route planning", "human-in-the-loop labeling", "document redaction at scale",
+    "synthetic data generation", "privacy sandbox measurement", "manufacturing defect detection",
+    "customer lifetime value", "green software engineering", "LLM eval harness design",
+    "benchmark governance", "data quality observability", "retail demand forecasting",
+    "ads budget pacing control", "session-based recommendations", "AB testing guardrails",
+    "app performance tuning", "malware classification", "eBPF observability", "SRE capacity planning",
+    "data mesh product thinking", "feature store operations", "model registry workflows",
+    "multi-armed bandits in prod", "drone delivery routing", "network intrusion detection",
+    "smart irrigation systems", "hydrology flood modeling", "audio fingerprinting",
+    "contextual bandits ads", "warehouse slotting strategy", "clinical NLP de-identification",
+    "topic modeling news", "media content moderation", "pricing elasticity modeling",
+    "route ETA prediction", "anomaly detection payments", "supply planning under shocks",
+    "loan default prediction", "marketing mix modeling", "energy price forecasting",
+    "semantic layer design", "digital twin for factories", "hyperparameter optimization",
+    "federated learning pipelines", "graph fraud rings", "churn prediction telco",
+    "demand shaping promotions", "carbon accounting data", "workforce scheduling",
+    "sports injury risk", "weather nowcasting", "satcom bandwidth allocation",
+    "sensor drift detection", "knowledge distillation", "retrieval augmented generation",
+    "latency SLO management", "capacity right-sizing", "multi-modal fusion",
+    "streaming joins correctness", "feature drift alarms"
+]
+assert len(TOPIC_SEEDS) >= DEFAULT_ROWS, "Need at least 100 topics in TOPIC_SEEDS."
 
-def invalid_prompt(p: str) -> str:
-    if "," in p:
-        return "contains comma"
-    n = wc(p)
-    if n < 18 or n > 32:
-        return f"wordcount {n} (needs 18–32)"
-    if "\n" in p:
-        return "contains newline"
-    return ""
 
-def ask_model(i: int) -> dict:
-    resp = client.chat.completions.create(
-        model=MODEL,
-        response_format={"type": "json_object"},
-        temperature=0.9,
-        max_tokens=300,
-        messages=[
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": USER_TEMPLATE.format(i=i+1)},
-        ],
-    )
-    raw = resp.choices[0].message.content.strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", raw, re.S)
-        if m:
-            return json.loads(m.group(0))
-        raise
+def sanitize_line(s: str) -> str:
+    """Remove/replace characters we don't want in a single-line, pipe-delimited file."""
+    s = s.replace(DELIM, " ")            # remove pipe
+    s = s.replace("\r", " ").replace("\n", " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def build_word_bank(topic: str) -> List[str]:
+    """Make a deterministic, topic-biased pseudo-corpus without using external APIs."""
+    base = re.sub(r"[^a-z0-9 ]+", " ", topic.lower())
+    base_words = [w for w in base.split() if w]
+    synonyms = [
+        "system", "architecture", "throughput", "latency", "scalability", "robustness",
+        "workflow", "pipeline", "dataset", "feature", "metric", "baseline", "benchmark",
+        "evaluation", "validation", "safety", "privacy", "compliance", "monitoring",
+        "governance", "orchestration", "deployment", "capacity", "efficiency",
+        "accuracy", "recall", "precision", "tradeoff", "cache", "vector", "index",
+        "sharding", "replication", "failover", "queue", "batch", "realtime", "stream",
+        "signal", "label", "context", "token", "prefix", "inference", "serving",
+        "autoscale", "scheduling", "optimizer", "gradient", "regularization", "ranking",
+        "retrieval", "approximate", "hashing", "checkpoint", "drift", "monitor",
+        "explainability", "cohort", "segmentation", "embedding", "router", "gateway",
+        "loadbalancer", "affinity", "consistency", "isolation", "durability",
+    ]
+    # Mix topic words and a fixed synonym set repeatedly
+    bank = (base_words + synonyms) * 50
+    random.shuffle(bank)
+    return bank
+
+
+def synth_paragraph(target_tokens: int, topic: str, mode: str) -> str:
+    """
+    Deterministic "synthetic" text that hits ~target_tokens words.
+    mode: "p1" for the base context, "p2extra" for the continuation.
+    """
+    bank = build_word_bank(topic)
+    rnd = random.Random(hash(topic + "|" + mode) ^ RNG_SEED)
+
+    chunks = []
+    word_count = 0
+    # Use semi-structured sentences to avoid dull repetition
+    while word_count < target_tokens:
+        sent_len = rnd.randint(12, 24)
+        words = [bank[rnd.randrange(len(bank))] for _ in range(sent_len - 8)]
+        # Add some topic words to keep on-theme
+        words += [w for w in topic.lower().split()[:4]]
+        rnd.shuffle(words)
+        sentence = " ".join(words).capitalize() + "."
+        chunks.append(sentence)
+        word_count += len(sentence.split())
+
+    text = " ".join(chunks)
+    return sanitize_line(text)
+
+
+def make_pair(topic: str) -> Tuple[str, str, str]:
+    """
+    Returns (prompt1, prompt2, topic)
+    - prompt1 ≈ 1000 tokens
+    - prompt2 = prompt1 + ≈250 tokens (follow-up / continuation)
+    """
+    p1 = synth_paragraph(TARGET_TOKENS_P1, topic, "p1")
+    p2_extra = synth_paragraph(TARGET_TOKENS_P2_EXTRA, topic, "p2extra")
+    p2 = sanitize_line(p1 + " " + p2_extra)
+    return p1, p2, sanitize_line(topic)
+
+
+def write_rows(rows: List[Tuple[str, str, str]], out_path: Path):
+    out_path.write_text("", encoding="utf-8")  # truncate
+    with out_path.open("a", encoding="utf-8") as f:
+        for p1, p2, topic in rows:
+            # pipe-delimited: prompt1|prompt2|topic
+            line = f"{p1}{DELIM}{p2}{DELIM}{topic}\n"
+            f.write(line)
+
 
 def main():
-    used_topics = set()
-    written = 0
+    parser = argparse.ArgumentParser(description="Generate long prompt pairs for KV/prefix caching benchmarks.")
+    parser.add_argument("--rows", type=int, default=DEFAULT_ROWS, help="number of rows to generate (default 100)")
+    parser.add_argument("--outfile", type=str, default=str(PROMPTS_PATH), help="output file (default prompts.txt)")
+    parser.add_argument("--openai", action="store_true",
+                        help="Use OpenAI to author base text per topic (optional, requires OPENAI_API_KEY).")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="OpenAI model for --openai mode")
+    args = parser.parse_args()
 
-    # Continue previous file and avoid duplicate topics
-    if os.path.exists(OUTFILE):
-        with open(OUTFILE, newline="", encoding="utf-8") as f:
-            r = csv.reader(f)
-            for row in r:
-                if len(row) == 3 and row[2].strip():
-                    used_topics.add(row[2].strip().lower())
+    random.seed(RNG_SEED)
 
-    with open(OUTFILE, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        i = 0
-        while written < NUM_PAIRS:
-            for attempt in range(6):
-                try:
-                    obj = ask_model(i)
-                except Exception as e:
-                    print(f"Error (API): {e}", file=sys.stderr)
-                    time.sleep(1.5)
-                    continue
+    topics = TOPIC_SEEDS[:args.rows]
+    rows: List[Tuple[str, str, str]] = []
 
-                if not all(k in obj for k in ("prompt1", "prompt2", "topic")):
-                    print("Error: missing keys in response", file=sys.stderr)
-                    time.sleep(0.8); continue
+    if not args.openai:
+        # Offline deterministic generation
+        for topic in topics:
+            p1, p2, t = make_pair(topic)
+            rows.append((p1, p2, t))
+        write_rows(rows, Path(args.outfile))
+        print(f"✅ Wrote {len(rows)} rows to {args.outfile} (pipe-delimited).")
+        return
 
-                p1 = str(obj["prompt1"]).strip()
-                p2 = str(obj["prompt2"]).strip()
-                topic = re.sub(r"\s+", " ", str(obj["topic"]).strip())
-                bad1 = invalid_prompt(p1)
-                bad2 = invalid_prompt(p2)
-                if bad1:
-                    print(f"Error: prompt1 {bad1}", file=sys.stderr); time.sleep(0.5); continue
-                if bad2:
-                    print(f"Error: prompt2 {bad2}", file=sys.stderr); time.sleep(0.5); continue
-                if topic.lower() in used_topics:
-                    print("Error: duplicate topic, regenerating", file=sys.stderr); time.sleep(0.5); continue
+    # ---- Optional OpenAI mode ----
+    try:
+        from openai import OpenAI
+    except Exception as e:
+        print("OpenAI SDK not installed. Run: pip install openai", file=sys.stderr)
+        sys.exit(1)
 
-                w.writerow([p1, p2, topic])
-                used_topics.add(topic.lower())
-                written += 1
-                i += 1
-                if written % 50 == 0:
-                    print(f"Generated {written}/{NUM_PAIRS}")
-                break
-            else:
-                print("Failed too many times for this pair; retrying…", file=sys.stderr)
-                time.sleep(2)
+    client = OpenAI()  # reads OPENAI_API_KEY
+    sys_prompt = (
+        "You draft long contextual passages for latency benchmarking.\n"
+        "- Produce a single-paragraph base context (~1000 tokens) for the supplied topic.\n"
+        "- Then produce a continuation (~250 tokens) that reads like a follow-up in the same context.\n"
+        "- Avoid the '|' character entirely. Avoid markdown. Return JSON with keys: base, extra.\n"
+    )
 
-    print(f"✅ Wrote/updated {OUTFILE} with {written} new pairs.")
+    def fetch_from_llm(topic: str) -> Tuple[str, str]:
+        user_prompt = f"Topic: {topic}\nReturn JSON only."
+        resp = client.chat.completions.create(
+            model=args.model,
+            temperature=0.6,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=2000,
+        )
+        content = resp.choices[0].message.content
+        import json
+        obj = json.loads(content)
+        base = sanitize_line(obj.get("base", ""))
+        extra = sanitize_line(obj.get("extra", ""))
+        return base, extra
+
+    for topic in topics:
+        try:
+            base, extra = fetch_from_llm(topic)
+        except Exception:
+            # Fallback to offline if API fails
+            base = synth_paragraph(TARGET_TOKENS_P1, topic, "p1")
+            extra = synth_paragraph(TARGET_TOKENS_P2_EXTRA, topic, "p2extra")
+        p1 = sanitize_line(base)
+        p2 = sanitize_line(base + " " + extra)
+        rows.append((p1, p2, sanitize_line(topic)))
+
+    write_rows(rows, Path(args.outfile))
+    print(f"✅ Wrote {len(rows)} rows to {args.outfile} (pipe-delimited, OpenAI-assisted).")
+
 
 if __name__ == "__main__":
     main()
