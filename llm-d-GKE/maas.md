@@ -1,27 +1,47 @@
 
+# Model as a Service Kuadrant Demo
 
-
+## Setup environment variables
 ```
-echo "Waiting for the Gateway IP address..."
-IP=""
-while [ -z "$IP" ]; do
-  IP=$(kubectl get gateway inference-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null)
-  if [ -z "$IP" ]; then
-    echo "Gateway IP not found, waiting 10 seconds..."
-    sleep 10
-  fi
-done
-echo "Gateway IP address is: $IP"
-export GATEWAY_IP=$IP
+export KUADRANT_GATEWAY_NS=gateway-system
+export KUADRANT_GATEWAY_NAME=trlp-tutorial-gateway
+export KUADRANT_SYSTEM_NS=$(kubectl get kuadrant -A -o jsonpath='{.items[0].metadata.namespace}')
 
-curl http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
--H 'Host: trlp-tutorial.example.com' \
--H "Content-Type: application/json" \
--H 'Authorization: APIKEY iamafreeuser' \
--d '{
-    "model": "llama3-8b",
-    "prompt": "The capital of Canada is",
-    "max_tokens": 50,
-    "temperature": 0
-}'
+export KUADRANT_INGRESS_HOST=$(kubectl get gtw ${KUADRANT_GATEWAY_NAME} -n ${KUADRANT_GATEWAY_NS} -o jsonpath='{.status.addresses[0].value}')
+export KUADRANT_INGRESS_PORT=$(kubectl get gtw ${KUADRANT_GATEWAY_NAME} -n ${KUADRANT_GATEWAY_NS} -o jsonpath='{.spec.listeners[?(@.name=="http")].port}')
+export KUADRANT_GATEWAY_URL=${KUADRANT_INGRESS_HOST}:${KUADRANT_INGRESS_PORT}
+```
+
+## Test a Free user
+```
+curl -H 'Host: trlp-tutorial.example.com' \
+     -H 'Authorization: APIKEY iamafreeuser' \
+     -H 'Content-Type: application/json' \
+     -X POST http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
+     -d '{
+           "model": "meta-llama/Llama-3.1-8B-Instruct",
+           "messages": [
+             { "role": "user", "content": "What is Kubernetes?" }
+           ],
+           "max_tokens": 100,
+           "stream": false,
+           "usage": true
+         }'
+```
+
+## Test a Gold user
+```
+curl -H 'Host: trlp-tutorial.example.com' \
+     -H 'Authorization: APIKEY iamagolduser' \
+     -H 'Content-Type: application/json' \
+     -X POST http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
+     -d '{
+           "model": "meta-llama/Llama-3.1-8B-Instruct",
+           "messages": [
+             { "role": "user", "content": "Explain cloud native architecture" }
+           ],
+           "max_tokens": 200,
+           "stream": false,
+           "usage": true
+         }'
 ```

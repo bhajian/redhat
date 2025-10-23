@@ -17,6 +17,33 @@ Measure the impact of vLLM KV-cache reuse when routing requests through a cache-
 
 ---
 
+## Commands to run the benchmark testing
+
+```
+python3 kv_latency_demo.py \
+  --index 3 \
+  --mode lb \
+  --lb-url http://4.156.35.174 \
+  --stream \
+  --warmup 1 \
+  --shared-prefix-file shared_prefix.txt \
+  --jsonl results.jsonl
+
+# GW (set an affinity key so both calls land on the same H100 pod)
+python3 kv_latency_demo.py \
+  --index 3 \
+  --mode gw \
+  --gw-url http://4.156.35.174 \
+  --stream \
+  --warmup 1 \
+  --shared-prefix-file shared_prefix.txt \
+  --affinity-key pair-3 \
+  --jsonl results.jsonl
+
+python3 analyze_results.py results.jsonl
+
+  ```
+
 ## Results Summary
 
 | Metric | LB (avg) | IGW (avg) | Improvement |

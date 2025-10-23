@@ -1,17 +1,17 @@
-# make_prompts_openai.py
+# make_prompts.py
 import os, json, time, re, csv, sys
 from typing import Tuple
 from openai import OpenAI
 
-OUTFILE = "prompts.txt"   # one line: prompt1,prompt2
+OUTFILE = "prompts.txt"   # CSV: prompt1,prompt2,topic
 NUM_PAIRS = 1000
-MODEL = "gpt-4o-mini"     # fast & cheap; change if you want
+MODEL = "gpt-4o-mini"     # adjust as you wish
 
 client = OpenAI()  # reads OPENAI_API_KEY from env
 
 SYSTEM = (
     "You generate benchmark prompt PAIRS for latency testing.\n"
-    "- Each output MUST be JSON with keys: prompt1, prompt2, topic.\n"
+    "- Output ONLY JSON with keys: prompt1, prompt2, topic.\n"
     "- The two prompts must be closely related to EACH OTHER (same topic), "
     "  but every CALL must use a brand-new topic never used before.\n"
     "- Each prompt MUST be ~20–30 words (acceptable range 18–32).\n"
@@ -53,7 +53,6 @@ def ask_model(i: int) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # sometimes models wrap JSON in code fences; try to strip them
         m = re.search(r"\{.*\}", raw, re.S)
         if m:
             return json.loads(m.group(0))
@@ -63,13 +62,13 @@ def main():
     used_topics = set()
     written = 0
 
-    # If continuing a previous run, load topics to avoid duplicates
+    # Continue previous file and avoid duplicate topics
     if os.path.exists(OUTFILE):
         with open(OUTFILE, newline="", encoding="utf-8") as f:
             r = csv.reader(f)
             for row in r:
                 if len(row) == 3 and row[2].strip():
-                    used_topics.add(row[2].strip())
+                    used_topics.add(row[2].strip().lower())
 
     with open(OUTFILE, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -83,7 +82,6 @@ def main():
                     time.sleep(1.5)
                     continue
 
-                # Validate presence
                 if not all(k in obj for k in ("prompt1", "prompt2", "topic")):
                     print("Error: missing keys in response", file=sys.stderr)
                     time.sleep(0.8); continue
@@ -91,8 +89,6 @@ def main():
                 p1 = str(obj["prompt1"]).strip()
                 p2 = str(obj["prompt2"]).strip()
                 topic = re.sub(r"\s+", " ", str(obj["topic"]).strip())
-
-                # Basic validations
                 bad1 = invalid_prompt(p1)
                 bad2 = invalid_prompt(p2)
                 if bad1:
@@ -101,11 +97,7 @@ def main():
                     print(f"Error: prompt2 {bad2}", file=sys.stderr); time.sleep(0.5); continue
                 if topic.lower() in used_topics:
                     print("Error: duplicate topic, regenerating", file=sys.stderr); time.sleep(0.5); continue
-                if wc(p1) < 18 or wc(p2) < 18:
-                    print("Error: too short", file=sys.stderr); time.sleep(0.5); continue
 
-                # Looks good; write as CSV WITH a third column for the topic
-                # (your reader can still take first two columns; topic is just for dedupe)
                 w.writerow([p1, p2, topic])
                 used_topics.add(topic.lower())
                 written += 1
@@ -121,4 +113,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
