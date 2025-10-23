@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-api-key-free-1
+  namespace: kuadrant-system
+  labels:
+    authorino.kuadrant.io/managed-by: authorino
+    app: my-llm
+  annotations:
+    kuadrant.io/groups: free
+    secret.kuadrant.io/user-id: user-1
+stringData:
+  api_key: iamafreeuser
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-api-key-gold-1
+  namespace: kuadrant-system
+  labels:
+    authorino.kuadrant.io/managed-by: authorino
+    app: my-llm
+  annotations:
+    kuadrant.io/groups: gold
+    secret.kuadrant.io/user-id: user-2
+stringData:
+  api_key: iamagolduser
+type: Opaque
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: llm-apikeys
+  namespace: gateway-system
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: llm-d-maas-gw
+  rules:
+    authentication:
+      api-key-users:
+        apiKey:
+          selector:
+            matchLabels:
+              app: my-llm
+        credentials:
+          authorizationHeader:
+            prefix: APIKEY
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                groups:
+                  selector: auth.identity.metadata.annotations.kuadrant\.io/groups
+                userid:
+                  selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id
+    authorization:
+      allow-groups:
+        opa:
+          rego: |
+            groups := split(object.get(input.auth.identity.metadata.annotations, "kuadrant.io/groups", ""), ",")
+            allow { groups[_] == "free" }
+            allow { groups[_] == "gold" }
+---
+apiVersion: kuadrant.io/v1alpha1
+kind: TokenRateLimitPolicy
+metadata:
+  name: llm-token-limits
+  namespace: gateway-system
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: llm-d-maas-gw
+  limits:
+    free:
+      rates:
+      - limit: 50
+        window: 1m
+      when:
+      - predicate: request.path == "/v1/chat/completions"
+      - predicate: |
+          auth.identity.groups.split(",").exists(g, g == "free")
+      counters:
+      - expression: auth.identity.userid
+    gold:
+      rates:
+      - limit: 200
+        window: 1m
+      when:
+      - predicate: request.path == "/v1/chat/completions"
+      - predicate: |
+          auth.identity.groups.split(",").exists(g, g == "gold")
+      counters:
+      - expression: auth.identity.userid

@@ -1,0 +1,15 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: llm-d-maas-gw
+  namespace: gateway-system
+spec:
+  gatewayClassName: istio
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    # hostname: llm.example.com  # optional; omit to accept any host
+    allowedRoutes:
+      namespaces:
+        from: All

@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llmd-forward
+  namespace: gateway-system
+spec:
+  parentRefs:
+  - name: llm-d-maas-gw
+    namespace: gateway-system
+  # Optional: if you set a hostname on the Gateway, include it here too:
+  # hostnames:
+  # - llm.example.com
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: infra-inference-scheduling-inference-gateway-istio
+      namespace: llm-d-inference-scheduling
+      port: 80
