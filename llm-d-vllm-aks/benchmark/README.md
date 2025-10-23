@@ -20,24 +20,31 @@ Measure the impact of vLLM KV-cache reuse when routing requests through a cache-
 ## Commands to run the benchmark testing
 
 ```
+Gateway (smart routing):
+
 python3 kv_latency_demo.py \
-  --index 3 \
-  --mode lb \
-  --lb-url http://4.156.35.174 \
+  --file prompts.txt \
+  --index 10 \
+  --mode gw \
+  --gw-url http://128.203.121.47 \
+  --model "Qwen/Qwen3-0.6B" \
   --stream \
   --warmup 1 \
   --shared-prefix-file shared_prefix.txt \
   --jsonl results.jsonl
 
-# GW (set an affinity key so both calls land on the same H100 pod)
+
+LoadBalancer (round-robin; fresh TCP per call):
+
 python3 kv_latency_demo.py \
-  --index 3 \
-  --mode gw \
-  --gw-url http://4.156.35.174 \
+  --file prompts.txt \
+  --index 11 \
+  --mode lb \
+  --lb-url http://4.156.35.174 \
+  --model "Qwen/Qwen3-0.6B" \
   --stream \
   --warmup 1 \
   --shared-prefix-file shared_prefix.txt \
-  --affinity-key pair-3 \
   --jsonl results.jsonl
 
 python3 analyze_results.py results.jsonl
