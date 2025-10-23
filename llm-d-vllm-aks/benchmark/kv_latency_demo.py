@@ -9,7 +9,7 @@ def read_pair(path, index):
     with open(path, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
             if i == index:
-                parts = line.rstrip("\n").split("|")
+                parts = line.rstrip("\n").split("|", 2)
                 if len(parts) < 2:
                     raise SystemExit(f"Line {index} malformed (needs at least 2 fields separated by '|').")
                 p1, p2 = parts[0].strip(), parts[1].strip()
