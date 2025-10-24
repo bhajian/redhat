@@ -22,7 +22,14 @@ Measure the impact of vLLM KV-cache reuse when routing requests through a cache-
 ```
 Gateway (smart routing):
 
-python3 kv_latency_demo.py --file prompts.txt --index 3 --mode gw --gw-url http://35.208.241.157   --model "llama3-8b" --stream --warmup 1 --jsonl results.jsonl
+python3 kv_latency_demo.py \
+  --file prompts.txt \
+  --index 2 \
+  --mode gw \
+  --gw-url http://51.8.246.164 \
+  --model meta-llama/Meta-Llama-3.1-8B-Instruct \
+  --stream \
+  --jsonl results.jsonl
 
 
 LoadBalancer (round-robin; fresh TCP per call):

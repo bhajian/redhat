@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-llama3-8b-instruct-lb
+  labels:
+    app: vllm-llama3-8b-instruct
+spec:
+  type: LoadBalancer
+  # For a clean round-robin baseline (no stickiness)
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 80          # public port
+      targetPort: 8000  # containerPort in your Deployment
+      protocol: TCP
+  selector:
+    app: vllm-llama3-8b-instruct

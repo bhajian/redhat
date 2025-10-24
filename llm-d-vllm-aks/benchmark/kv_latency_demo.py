@@ -29,7 +29,12 @@ def pick_endpoint(mode, lb_url, gw_url):
     raise SystemExit("mode must be lb or gw")
 
 def post_once(base, model, prompt, timeout, stream, close_conn):
-    """Makes one /v1/chat/completions call and returns (fftp_s, full_s, json_response)."""
+    """
+    Makes one /v1/chat/completions call and returns (ttft_s, full_s, json_response).
+
+    - TTFT (Time To First Token) is measured only in streaming mode (time to first streamed token).
+      If not streaming or no token arrives, we fall back to full time for TTFT.
+    """
     url = f"{base}/v1/chat/completions"
     payload = {
         "model": model,
@@ -47,7 +52,7 @@ def post_once(base, model, prompt, timeout, stream, close_conn):
 
     t0 = time.perf_counter()
 
-    # Non-streaming mode
+    # Non-streaming mode: TTFT == full time (no partial measurements available)
     if not stream:
         with requests.Session() as s:
             r = s.post(url, headers=headers, data=json.dumps(payload), timeout=timeout)
@@ -56,12 +61,13 @@ def post_once(base, model, prompt, timeout, stream, close_conn):
             j = r.json()
         except Exception:
             j = {"status": r.status_code, "text": r.text}
-        return (t1 - t0), (t1 - t0), j
+        elapsed = t1 - t0
+        return elapsed, elapsed, j
 
-    # Streaming mode
+    # Streaming mode: measure true TTFT when the first token arrives
     with requests.Session() as s:
         r = s.post(url, headers=headers, data=json.dumps(payload), timeout=timeout, stream=True)
-        fftp = None
+        ttft = None
         last = {}
         for line in r.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data:"):
@@ -74,12 +80,18 @@ def post_once(base, model, prompt, timeout, stream, close_conn):
                 last = obj
             except Exception:
                 continue
-            if fftp is None:
-                fftp = time.perf_counter() - t0
+            if ttft is None:
+                ttft = time.perf_counter() - t0
         t1 = time.perf_counter()
-        if fftp is None:
-            fftp = t1 - t0
-        return fftp, (t1 - t0), last
+        if ttft is None:
+            ttft = t1 - t0
+        return ttft, (t1 - t0), last
+
+def pct_improve_ms(cold_ms, warm_ms):
+    """Return percent improvement: (cold - warm) / cold * 100. None if cold<=0."""
+    if cold_ms is None or warm_ms is None or cold_ms <= 0:
+        return None
+    return round(((cold_ms - warm_ms) / cold_ms) * 100.0, 2)
 
 def main():
     ap = argparse.ArgumentParser(description="KV-cache latency demo for llm-d gateway vs loadbalancer.")
@@ -91,7 +103,7 @@ def main():
     ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
     ap.add_argument("--timeout", type=float, default=90.0)
     ap.add_argument("--warmup", type=int, default=0)
-    ap.add_argument("--stream", action="store_true", help="Use streaming to measure FFTP")
+    ap.add_argument("--stream", action="store_true", help="Use streaming to measure TTFT")
     ap.add_argument("--jsonl", default="results.jsonl")
     args = ap.parse_args()
 
@@ -107,18 +119,21 @@ def main():
             print(f"[warmup] {e}", file=sys.stderr)
 
     # Cold call
-    cold_fftp_s, cold_full_s, cold_json = post_once(
+    cold_ttft_s, cold_full_s, cold_json = post_once(
         base, args.model, p1, args.timeout, args.stream, close_conn=(args.mode == "lb")
     )
     time.sleep(0.05)
 
     # Warm call (related continuation)
-    warm_fftp_s, warm_full_s, warm_json = post_once(
+    warm_ttft_s, warm_full_s, warm_json = post_once(
         base, args.model, p2, args.timeout, args.stream, close_conn=(args.mode == "lb")
     )
 
-    usage_cold = cold_json.get("usage") if isinstance(cold_json, dict) else None
-    usage_warm = warm_json.get("usage") if isinstance(warm_json, dict) else None
+    # Convert to ms then compute deltas and improvements
+    cold_ttft_ms = round(cold_ttft_s * 1000, 2)
+    cold_full_ms = round(cold_full_s * 1000, 2)
+    warm_ttft_ms = round(warm_ttft_s * 1000, 2)
+    warm_full_ms = round(warm_full_s * 1000, 2)
 
     row = {
         "target": args.mode,
@@ -126,14 +141,16 @@ def main():
         "index": args.index,
         "topic": topic,
         "model": args.model,
-        "cold_fftp_ms": round(cold_fftp_s * 1000, 2),
-        "cold_full_ms": round(cold_full_s * 1000, 2),
-        "warm_fftp_ms": round(warm_fftp_s * 1000, 2),
-        "warm_full_ms": round(warm_full_s * 1000, 2),
-        "delta_fftp_ms": round((warm_fftp_s - cold_fftp_s) * 1000, 2),
-        "delta_full_ms": round((warm_full_s - cold_full_s) * 1000, 2),
-        "usage_cold": usage_cold,
-        "usage_warm": usage_warm,
+        "cold_ttft_ms": cold_ttft_ms,
+        "cold_full_ms": cold_full_ms,
+        "warm_ttft_ms": warm_ttft_ms,
+        "warm_full_ms": warm_full_ms,
+        "delta_ttft_ms": round(warm_ttft_ms - cold_ttft_ms, 2),
+        "delta_full_ms": round(warm_full_ms - cold_full_ms, 2),
+        "improve_ttft_pct": pct_improve_ms(cold_ttft_ms, warm_ttft_ms),   # positive == faster on warm
+        "improve_full_pct": pct_improve_ms(cold_full_ms, warm_full_ms),   # positive == faster on warm
+        "usage_cold": cold_json.get("usage") if isinstance(cold_json, dict) else None,
+        "usage_warm": warm_json.get("usage") if isinstance(warm_json, dict) else None,
     }
 
     print(json.dumps(row, ensure_ascii=False, indent=2))
