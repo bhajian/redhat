@@ -7,7 +7,7 @@ Measure the impact of vLLM KV-cache reuse when routing requests through a cache-
 
 | Component | Description |
 |------------|--------------|
-| Model | `Qwen/Qwen3-0.6B` |
+| Model | `Llama-3.2-instruct` |
 | Pods | 2 vLLM pods + 1 Istio Inference Gateway |
 | Dataset | 1000 prompt pairs (`prompt1,prompt2`) with semantically related queries |
 | Client | Python benchmark script (`kv_latency_demo.py`) |
@@ -26,7 +26,7 @@ python3 kv_latency_demo.py \
   --file prompts.txt \
   --index 960 \
   --mode gw \
-  --gw-url http://51.8.246.164 \
+  --gw-url http://MODEL-IP \
   --model meta-llama/Meta-Llama-3.1-8B-Instruct \
   --stream \
   --jsonl results.jsonl
@@ -37,15 +37,12 @@ python3 kv_latency_parallel.py \
   --kv-script kv_latency_demo.py \
   --file prompts.txt \
   --index 50 \
-  --gw-url http://51.8.246.164 \
+  --gw-url http://MODEL-IP \
   --model meta-llama/Meta-Llama-3.1-8B-Instruct \
   --stream \
   --ttft-mode first-content \
   --sleep-between 0.05 \
   --jsonl results.jsonl
-
-
-
 
   ```
 

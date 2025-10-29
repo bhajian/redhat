@@ -7,16 +7,20 @@ Output: prompts.txt
 Format (pipe-delimited, one row per line):
 prompt1|prompt2|topic
 
-- prompt1 ≈ 1000 tokens (approx words)
+- prompt1 ≈ 2000 tokens (approx words)
 - prompt2 = prompt1 + ~200 more tokens (same topic, explicit follow-up that references the first part)
 - No '|' characters in any prompt; newlines are collapsed to spaces.
 - Deterministic offline mode by default (no API required).
 - Optional --openai mode to ask an LLM to draft the base content per topic (adds a *relevant* follow-up).
 - Optional --validate to check an existing prompts file.
 
+Language behavior:
+- By default, rows cycle through English, Spanish, French (en→es→fr), producing separate-language prompts per row.
+- No mixing of languages inside a single row.
+
 Usage:
-  python3 make_prompts.py --rows 100
-  python3 make_prompts.py --rows 100 --openai --model gpt-4o-mini
+  python3 make_prompts.py --rows 1000
+  python3 make_prompts.py --rows 1000 --languages en,es,fr
   python3 make_prompts.py --validate --outfile prompts.txt
 """
 
@@ -30,14 +34,14 @@ from pathlib import Path
 from typing import List, Tuple
 
 # ---------------- Config ----------------
-DEFAULT_ROWS = 100
+DEFAULT_ROWS = 1000
 PROMPTS_PATH = Path("prompts.txt")
 DELIM = "|"
-TARGET_TOKENS_P1 = 1000
+TARGET_TOKENS_P1 = 2000
 TARGET_TOKENS_P2_EXTRA = 200
 RNG_SEED = 42  # deterministic
 
-# A pool of diverse topics (100+). Each row uses a unique topic.
+# A pool of diverse topics (>= 350; we will cycle if rows exceed this list)
 TOPIC_SEEDS = [
     "quantitative risk management", "urban mobility planning", "renewable energy storage",
     "low-latency trading infrastructure", "satellite image segmentation", "ocean microplastics",
@@ -74,10 +78,31 @@ TOPIC_SEEDS = [
     "sports injury risk", "weather nowcasting", "satcom bandwidth allocation",
     "sensor drift detection", "knowledge distillation", "retrieval augmented generation",
     "latency SLO management", "capacity right-sizing", "multi-modal fusion",
-    "streaming joins correctness", "feature drift alarms"
+    "streaming joins correctness", "feature drift alarms",
+    # extra variety for 1000 rows (tech + domain)
+    "zero-trust network design", "homomorphic encryption use cases", "privacy-preserving telemetry",
+    "GPU scheduling for inference", "vector quantization tradeoffs", "model distillation at scale",
+    "fuzz testing for APIs", "chaos engineering playbooks", "event-driven backpressure control",
+    "autoscaling with predictive signals", "reservoir sampling for logs", "sketching algorithms in ops",
+    "LLM safety policies", "prompt injection defenses", "rate limiting fairness",
+    "finite-state controllers", "linguistic feature extraction", "cross-lingual embeddings",
+    "offline RL for pricing", "context windows and caching", "prefix compression strategies",
+    "semantic chunking heuristics", "document layout parsing", "table extraction pipelines",
+    "OCR post-correction", "speech diarization", "keyword spotting on-device",
+    "SLO error budgets", "multi-region failover", "data residency controls",
+    "PII tokenization vaults", "governed feature stores", "retraining triggers",
+    "canary analysis statistics", "shadow traffic validation", "synthetic monitoring",
+    "distributed tracing joins", "bitemporal data modeling", "late-arriving data handling",
+    "backfills and replays", "sequence anomaly detection", "volatility regime shifts",
+    "cointegration signals", "order book simulation", "latency arbitrage protection",
+    "slippage estimation", "portfolio factor decomposition", "risk parity tuning",
+    "explainable gradient boosting", "counterfactual explanations", "adversarial robustness tests",
+    "SFT vs DPO comparisons", "reward modeling pitfalls", "online A/B sequential tests",
+    "interleaving methods for ranking", "graph neural anomalies", "entity resolution at scale",
+    "geohash-based indexing", "raster to vector conversion", "change detection SAR",
+    "cloud cost anomaly detection", "GreenOps KPIs", "carbon-aware scheduling",
+    "edge-to-cloud synchronization", "schema evolution contracts"
 ]
-assert len(TOPIC_SEEDS) >= DEFAULT_ROWS, "Need at least 100 topics in TOPIC_SEEDS."
-
 
 # ---------------- Utilities ----------------
 
@@ -86,6 +111,20 @@ a an the and or but if then else for of on in into to from with without over und
 is are was were be being been can could should would may might will shall do does did done doing
 this that these those it its their his her your my our as by at not no nor so very just than
 more most less least many much few such per via about around between across up down out any each
+""".split())
+
+STOPWORDS_ES = set("""
+un una unos unas el la los las y o pero si entonces sino para de del con sin sobre bajo entre
+es son fue fueron ser estar siendo sido puede podrían debería deberíamos podrá deberá harán hará
+esto eso estos esas aquello aquellas su sus tu tus mi mis nuestro nuestros vuestra vuestras como
+por en al desde hasta muy más menos tanto tan mucho mucha muchos muchas cada
+""".split())
+
+STOPWORDS_FR = set("""
+un une des le la les et ou mais si alors sinon pour de du des avec sans sur sous entre
+est sont était étaient être étant été peut pourraient devrait devrions pourra devra feront fera
+ce cela ces celles celui leur leurs ton ta tes mon mes notre nos votre vos comme par en au aux
+depuis jusqu très plus moins autant tant beaucoup chacune chacun
 """.split())
 
 def sanitize_line(s: str) -> str:
@@ -98,125 +137,184 @@ def sanitize_line(s: str) -> str:
 def token_len(s: str) -> int:
     return 0 if not s else len(s.split())
 
-def take_top_keywords(text: str, topic: str, k: int = 12) -> List[str]:
-    words = [w.lower() for w in re.findall(r"[a-z0-9\-]+", text)]
-    words += [w.lower() for w in re.findall(r"[a-z0-9\-]+", topic)]
-    words = [w for w in words if w not in STOPWORDS and len(w) > 2]
-    freq = Counter(words)
-    return [w for w, _ in freq.most_common(k)]
-
 def clamp_to_target(text: str, target_tokens: int) -> str:
     words = text.split()
     if len(words) <= target_tokens:
         return text
     return " ".join(words[:target_tokens])
 
-# ---------------- Offline text synthesis (improved structure) ----------------
+# ---------------- Multilingual banks ----------------
 
-def build_word_bank(topic: str) -> List[str]:
-    """Make a deterministic, topic-biased pseudo-corpus without external APIs."""
-    base = re.sub(r"[^a-z0-9 ]+", " ", topic.lower())
+EN_BANK = [
+    "system","architecture","throughput","latency","scalability","robustness","workflow","pipeline","dataset",
+    "feature","metric","baseline","benchmark","evaluation","validation","safety","privacy","compliance",
+    "monitoring","governance","orchestration","deployment","capacity","efficiency","accuracy","recall",
+    "precision","tradeoff","cache","vector","index","sharding","replication","failover","queue","batch",
+    "realtime","stream","signal","label","context","token","prefix","inference","serving","autoscale",
+    "scheduling","optimizer","regularization","ranking","retrieval","approximate","hashing","checkpoint",
+    "drift","monitor","observability","profiling","telemetry","slo","sla","backpressure","canary","rollout",
+    "rollback","circuitbreaker","idempotency","deduplication","rate-limiting","fairness","interpretability",
+    "trace","span","histogram","quantile","percentile","p50","p95","p99","tail-latency","cold-start"
+]
+
+ES_BANK = [
+    "sistema","arquitectura","rendimiento","latencia","escalabilidad","robustez","flujo","tubería","conjunto",
+    "característica","métrica","línea-base","evaluación","validación","seguridad","privacidad","cumplimiento",
+    "monitoreo","gobernanza","orquestación","despliegue","capacidad","eficiencia","precisión","recuperación",
+    "equilibrio","caché","vector","índice","fragmentación","replicación","tolerancia","cola","lote","tiempo-real",
+    "flujo-continuo","señal","etiqueta","contexto","token","prefijo","inferencia","servicio","autoescala",
+    "planificación","optimizador","regularización","clasificación","recuperación","aproximado","hash","punto-control",
+    "deriva","observabilidad","telemetría","acuerdo-nivel-servicio","presión-retorno","canario","despliegue-progresivo",
+    "reversión","cortacircuitos","idempotencia","deduplicación","limitación-tasa","equidad","interpretabilidad",
+    "traza","segmento","histograma","cuantil","percentil","cola-latencia","arranque-en-frío"
+]
+
+FR_BANK = [
+    "système","architecture","débit","latence","scalabilité","robustesse","flux","pipeline","ensemble",
+    "caractéristique","métrique","référence","évaluation","validation","sécurité","confidentialité","conformité",
+    "surveillance","gouvernance","orchestration","déploiement","capacité","efficacité","précision","rappel",
+    "équilibre","cache","vecteur","index","partitionnement","réplication","basculement","file","lot","temps-réel",
+    "diffusion","signal","étiquette","contexte","jeton","préfixe","inférence","service","auto-échelle",
+    "ordonnancement","optimiseur","régularisation","classement","recherche","approximatif","hachage","point-de-contrôle",
+    "dérive","observabilité","télémétrie","engagement-de-service","contre-pression","canari","déploiement-progressif",
+    "retour-arrière","coupe-circuit","idempotence","déduplication","limitation-de-débit","équité","interprétabilité",
+    "trace","span","histogramme","quantile","percentile","latence-de-queue","démarrage-à-froid"
+]
+
+# Section headers per language
+SECTIONS = {
+    "en": [("Overview",5),("Constraints",4),("Architecture",6),("Metrics",4),("Failure modes",4),("Mitigations",4),("Examples",4)],
+    "es": [("Resumen",5),("Restricciones",4),("Arquitectura",6),("Métricas",4),("Modos de falla",4),("Mitigaciones",4),("Ejemplos",4)],
+    "fr": [("Aperçu",5),("Contraintes",4),("Architecture",6),("Métriques",4),("Modes de défaillance",4),("Atténuations",4),("Exemples",4)],
+}
+
+# Follow-up templates per language (kept short; we clamp to 200 tokens)
+FOLLOWUP_TPL = {
+    "en": [
+        "Given the passage above, answer strictly using prior context.",
+        "1) Identify the dominant bottleneck for latency under peak load and explain why basic caching might be insufficient.",
+        "2) Describe the tradeoff between throughput and tail-latency in this design.",
+        "3) Name two failure modes related to replication and sharding and propose mitigations.",
+        "4) Which metrics best verify success (consider SLOs and observability hooks)?",
+        "5) Sketch a safe rollout and rollback plan for the proposed change.",
+        "Finally, add a three-bullet action plan referencing concrete entities from the passage."
+    ],
+    "es": [
+        "Usando únicamente el contexto anterior, responde con precisión.",
+        "1) Señala el cuello de botella dominante de latencia bajo carga pico y por qué la caché básica puede no bastar.",
+        "2) Describe el equilibrio entre rendimiento y latencia de cola en este diseño.",
+        "3) Indica dos modos de falla relacionados con la replicación y el fragmentado y propone mitigaciones.",
+        "4) ¿Qué métricas verifican el éxito (considera SLOs y ganchos de observabilidad)?",
+        "5) Esboza un plan de despliegue progresivo y reversión seguro para el cambio propuesto.",
+        "Finalmente, agrega un plan de acción de tres viñetas con referencias concretas del pasaje."
+    ],
+    "fr": [
+        "En t'appuyant uniquement sur le texte précédent, réponds de manière concise.",
+        "1) Identifie le goulot d'étranglement dominant de latence en charge de pointe et pourquoi un cache simple peut être insuffisant.",
+        "2) Décris le compromis entre débit et latence de queue dans cette architecture.",
+        "3) Donne deux modes de défaillance liés à la réplication et au partitionnement, avec des atténuations.",
+        "4) Quelles métriques valident la réussite (considère les SLO et les points d'observabilité) ?",
+        "5) Esquisse un plan de déploiement progressif et de retour arrière sécurisé pour le changement proposé.",
+        "Enfin, ajoute un plan d'action en trois puces en citant des éléments concrets du passage."
+    ],
+}
+
+def take_top_keywords(text: str, topic: str, k: int, lang: str) -> List[str]:
+    # language-aware stopwords
+    sw = STOPWORDS if lang == "en" else (STOPWORDS_ES if lang == "es" else STOPWORDS_FR)
+    words = [w.lower() for w in re.findall(r"[a-zàâäçéèêëîïôöùûüñ0-9\-]+", text)]
+    words += [w.lower() for w in re.findall(r"[a-zàâäçéèêëîïôöùûüñ0-9\-]+", topic)]
+    words = [w for w in words if w not in sw and len(w) > 2]
+    freq = Counter(words)
+    return [w for w, _ in freq.most_common(k)]
+
+# ---------------- Offline synthesis ----------------
+
+def build_word_bank(topic: str, lang: str) -> List[str]:
+    """Deterministic, topic-biased multilingual corpus."""
+    base = re.sub(r"[^a-zàâäçéèêëîïôöùûüñ0-9 ]+", " ", topic.lower())
     base_words = [w for w in base.split() if w]
-    synonyms = [
-        "system", "architecture", "throughput", "latency", "scalability", "robustness",
-        "workflow", "pipeline", "dataset", "feature", "metric", "baseline", "benchmark",
-        "evaluation", "validation", "safety", "privacy", "compliance", "monitoring",
-        "governance", "orchestration", "deployment", "capacity", "efficiency",
-        "accuracy", "recall", "precision", "tradeoff", "cache", "vector", "index",
-        "sharding", "replication", "failover", "queue", "batch", "realtime", "stream",
-        "signal", "label", "context", "token", "prefix", "inference", "serving",
-        "autoscale", "scheduling", "optimizer", "regularization", "ranking",
-        "retrieval", "approximate", "hashing", "checkpoint", "drift", "monitor",
-        "explainability", "cohort", "segmentation", "embedding", "router", "gateway",
-        "loadbalancer", "affinity", "consistency", "isolation", "durability",
-        "observability", "profiling", "telemetry", "slo", "sla", "backpressure",
-        "throughput", "failover", "canary", "bluegreen", "rollout", "rollback"
-    ]
-    bank = (base_words + synonyms) * 50
-    random.shuffle(bank)
+    if lang == "en":
+        synonyms = EN_BANK
+    elif lang == "es":
+        synonyms = ES_BANK
+    else:
+        synonyms = FR_BANK
+    # Multiply to inflate vocabulary and shuffle deterministically
+    bank = (base_words + synonyms) * 80
+    rnd = random.Random(hash(topic + "|" + lang + "|bank") ^ RNG_SEED)
+    rnd.shuffle(bank)
     return bank
 
-def synth_sentence(rnd: random.Random, bank: List[str], topic: str, min_len=14, max_len=26) -> str:
+def synth_sentence(rnd: random.Random, bank: List[str], topic: str, lang: str, min_len=16, max_len=28) -> str:
     sent_len = rnd.randint(min_len, max_len)
-    words = [bank[rnd.randrange(len(bank))] for _ in range(max(4, sent_len - 8))]
-    # Add some topic words to keep on-theme
-    words += [w for w in topic.lower().split()[:4]]
-    rnd.shuffle(words)
-    return (" ".join(words)).capitalize() + "."
+    core = [bank[rnd.randrange(len(bank))] for _ in range(max(6, sent_len - 10))]
+    core += [w for w in topic.lower().split()[:4]]
+    rnd.shuffle(core)
+    # Simple capitalization without changing non-ASCII letters
+    s = " ".join(core)
+    if s:
+        s = s[0].upper() + s[1:]
+    return s + "."
 
-def synth_section(rnd: random.Random, bank: List[str], topic: str, header: str, sentences: int) -> str:
-    parts = [f"{header}:"]  # simple inline markers; kept in-line (no newlines)
+def synth_section(rnd: random.Random, bank: List[str], topic: str, lang: str, header: str, sentences: int) -> str:
+    parts = [f"{header}:"]  # inline header (no newlines)
     for _ in range(sentences):
-        parts.append(synth_sentence(rnd, bank, topic))
+        parts.append(synth_sentence(rnd, bank, topic, lang))
     return " ".join(parts)
 
-def synth_base_context(target_tokens: int, topic: str) -> str:
+def synth_base_context(target_tokens: int, topic: str, lang: str) -> str:
     """
-    More structured ~1000-token passage with soft sections to improve coherence.
+    Structured ~2000-token passage with soft sections to improve coherence.
     """
-    bank = build_word_bank(topic)
-    rnd = random.Random(hash(topic + "|base") ^ RNG_SEED)
-    sections = [
-        ("Overview", 5),
-        ("Constraints", 4),
-        ("Architecture", 6),
-        ("Metrics", 4),
-        ("Failure modes", 4),
-        ("Mitigations", 4),
-        ("Examples", 4),
-    ]
+    bank = build_word_bank(topic, lang)
+    rnd = random.Random(hash(topic + "|" + lang + "|base") ^ RNG_SEED)
+    sections = SECTIONS[lang]
     chunks = []
     word_count = 0
     i = 0
     while word_count < target_tokens:
         header, sents = sections[i % len(sections)]
-        para = synth_section(rnd, bank, topic, header, sents)
+        para = synth_section(rnd, bank, topic, lang, header, sents)
         chunks.append(para)
         word_count += token_len(para)
         i += 1
     text = " ".join(chunks)
     return sanitize_line(text)
 
-def synth_followup_extra(base_text: str, topic: str, target_tokens: int) -> str:
+def synth_followup_extra(base_text: str, topic: str, target_tokens: int, lang: str) -> str:
     """
-    Generate a ~200-token follow-up that *explicitly* refers to the preceding passage.
-    We craft a short interrogative/task block referencing salient keywords.
+    Generate a ~200-token follow-up that explicitly refers to the preceding passage, in the same language.
     """
-    rnd = random.Random(hash(topic + "|extra") ^ RNG_SEED)
-    kws = take_top_keywords(base_text, topic, k=12)
-    # Build a compact set of questions + a small task prompt
-    prompts = [
-        "Given the passage above, answer the following concisely and only using prior context.",
-        f"1) Which bottleneck most affects latency under peak load and why might {kws[0] if kws else 'caching'} be insufficient?",
-        f"2) How do {kws[1] if len(kws)>1 else 'throughput'} and {kws[2] if len(kws)>2 else 'tail-latency'} trade off in this design?",
-        f"3) Identify two failure modes related to {kws[3] if len(kws)>3 else 'replication'} and {kws[4] if len(kws)>4 else 'sharding'}, and propose mitigations.",
-        f"4) Which metrics best verify success of the mitigations (consider {kws[5] if len(kws)>5 else 'SLOs'} and observability hooks)?",
-        f"5) Outline a stepwise rollout and rollback plan for the proposed change to {kws[6] if len(kws)>6 else 'the gateway'}."
-    ]
-    # Add a tiny "do this now" instruction to force relevant continuation.
-    prompts.append("Then produce a 3-bullet action plan referencing concrete entities from the passage.")
-    text = " ".join(prompts)
+    rnd = random.Random(hash(topic + "|" + lang + "|extra") ^ RNG_SEED)
+    _ = take_top_keywords(base_text, topic, k=12, lang=lang)  # we keep for potential future personalization
+    prompts = FOLLOWUP_TPL[lang]
+    # Slight shuffle for variety, but keep first instruction first
+    inst = prompts[0]
+    rest = prompts[1:].copy()
+    rnd.shuffle(rest)
+    text = " ".join([inst] + rest)
     text = clamp_to_target(text, target_tokens)
     return sanitize_line(text)
 
 # ---------------- Row construction ----------------
 
-def make_pair(topic: str) -> Tuple[str, str, str]:
+def make_pair(topic: str, lang: str) -> Tuple[str, str, str]:
     """
-    Returns (prompt1, prompt2, topic)
-    - prompt1 ≈ 1000 tokens
+    Returns (prompt1, prompt2, topic_label)
+    - prompt1 ≈ 2000 tokens
     - prompt2 = prompt1 + ≈200 tokens (explicit follow-up)
     """
-    p1 = synth_base_context(TARGET_TOKENS_P1, topic)
-    extra = synth_followup_extra(p1, topic, TARGET_TOKENS_P2_EXTRA)
+    p1 = synth_base_context(TARGET_TOKENS_P1, topic, lang)
+    extra = synth_followup_extra(p1, topic, TARGET_TOKENS_P2_EXTRA, lang)
     p2 = sanitize_line(p1 + " " + extra)
-    return p1, p2, sanitize_line(topic)
+    topic_label = sanitize_line(f"{topic} [{lang}]")
+    return p1, p2, topic_label
 
 def write_rows(rows: List[Tuple[str, str, str]], out_path: Path):
     out_path.write_text("", encoding="utf-8")  # truncate
     with out_path.open("a", encoding="utf-8") as f:
         for p1, p2, topic in rows:
-            # pipe-delimited: prompt1|prompt2|topic
             line = f"{p1}{DELIM}{p2}{DELIM}{topic}\n"
             f.write(line)
 
@@ -239,19 +337,16 @@ def validate_file(path: Path) -> int:
             issues += 1
             continue
         p1, p2, topic = parts
-        # 1) Ensure p2 has p1 as prefix
         if not p2.startswith(p1 + " "):
             print(f"[L{i}] prompt2 is not prefix-extended from prompt1")
             issues += 1
-        # 2) Check approximate lengths
         n1, n2 = token_len(p1), token_len(p2) - token_len(p1)
-        if abs(n1 - TARGET_TOKENS_P1) > 150:
+        if abs(n1 - TARGET_TOKENS_P1) > 220:
             print(f"[L{i}] prompt1 token count off: got {n1}")
             issues += 1
-        if abs(n2 - TARGET_TOKENS_P2_EXTRA) > 80:
+        if abs(n2 - TARGET_TOKENS_P2_EXTRA) > 90:
             print(f"[L{i}] extra token count off: got {n2}")
             issues += 1
-        # 3) Check stray pipes inside fields (shouldn't happen after sanitize)
         if (DELIM in p1) or (DELIM in p2) or (DELIM in topic):
             print(f"[L{i}] stray delimiter detected in fields")
             issues += 1
@@ -262,11 +357,13 @@ def validate_file(path: Path) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate long prompt pairs for KV/prefix caching benchmarks.")
-    parser.add_argument("--rows", type=int, default=DEFAULT_ROWS, help="number of rows to generate (default 100)")
+    parser.add_argument("--rows", type=int, default=DEFAULT_ROWS, help=f"number of rows to generate (default {DEFAULT_ROWS})")
     parser.add_argument("--outfile", type=str, default=str(PROMPTS_PATH), help="output file (default prompts.txt)")
     parser.add_argument("--openai", action="store_true",
                         help="Use OpenAI to author base text per topic (optional, requires OPENAI_API_KEY).")
     parser.add_argument("--model", type=str, default="gpt-4o-mini", help="OpenAI model for --openai mode")
+    parser.add_argument("--languages", type=str, default="en,es,fr",
+                        help="Comma-separated languages to cycle through per row (subset of en,es,fr).")
     parser.add_argument("--validate", action="store_true", help="Validate an existing prompts file and exit")
     args = parser.parse_args()
 
@@ -278,15 +375,20 @@ def main():
         issues = validate_file(path)
         sys.exit(0 if issues == 0 else 3)
 
+    langs = [x.strip().lower() for x in args.languages.split(",") if x.strip().lower() in {"en","es","fr"}]
+    if not langs:
+        raise SystemExit("No valid languages specified. Use a subset of: en,es,fr")
+
     random.seed(RNG_SEED)
 
-    topics = TOPIC_SEEDS[:args.rows]
     rows: List[Tuple[str, str, str]] = []
 
     # ---- Offline deterministic generation (default) ----
     if not args.openai:
-        for topic in topics:
-            p1, p2, t = make_pair(topic)
+        for i in range(args.rows):
+            topic = TOPIC_SEEDS[i % len(TOPIC_SEEDS)]
+            lang = langs[i % len(langs)]
+            p1, p2, t = make_pair(topic, lang)
             rows.append((p1, p2, t))
         write_rows(rows, Path(args.outfile))
         print(f"✅ Wrote {len(rows)} rows to {args.outfile} (pipe-delimited, offline).")
@@ -295,52 +397,63 @@ def main():
     # ---- Optional OpenAI mode (adds coherent base + targeted follow-up) ----
     try:
         from openai import OpenAI
-    except Exception as e:
+    except Exception:
         print("OpenAI SDK not installed. Run: pip install openai", file=sys.stderr)
         sys.exit(1)
 
     client = OpenAI()  # reads OPENAI_API_KEY
-    sys_prompt = (
-        "You draft long contextual passages for latency benchmarking.\n"
-        "- Produce a single-paragraph base context (~1000 tokens) for the supplied topic.\n"
-        "- Then produce a follow-up (~200 tokens) that explicitly references the base and asks probing questions/tasks.\n"
-        "- Avoid the '|' character entirely. Avoid markdown. Return JSON with keys: base, extra.\n"
-    )
 
-    def fetch_from_llm(topic: str) -> Tuple[str, str]:
+    def sys_prompt_for(lang: str) -> str:
+        if lang == "en":
+            return ("You draft long contextual passages for latency benchmarking.\n"
+                    "- Produce a single-paragraph base context (~2000 tokens) for the supplied topic, in English.\n"
+                    "- Then produce a follow-up (~200 tokens) that explicitly references the base and asks probing questions/tasks.\n"
+                    "- Avoid the '|' character entirely. Avoid markdown. Return JSON with keys: base, extra.\n")
+        if lang == "es":
+            return ("Redacta pasajes contextuales largos para pruebas de latencia.\n"
+                    "- Produce un contexto base (~2000 tokens) para el tema, en español.\n"
+                    "- Luego una continuación (~200 tokens) que haga referencia explícita al texto base con preguntas/tareas.\n"
+                    "- Evita el carácter '|'. Evita markdown. Devuelve JSON con claves: base, extra.\n")
+        return ("Rédige des passages contextuels longs pour des tests de latence.\n"
+                "- Produis un contexte de base (~2000 tokens) pour le sujet, en français.\n"
+                "- Puis une suite (~200 tokens) qui fait explicitement référence au texte de base avec questions/tâches.\n"
+                "- Évite le caractère '|'. Évite le markdown. Retourne un JSON avec les clés: base, extra.\n")
+
+    def fetch_from_llm(topic: str, lang: str) -> Tuple[str, str]:
+        sp = sys_prompt_for(lang)
         user_prompt = f"Topic: {topic}\nReturn JSON only."
         resp = client.chat.completions.create(
             model=args.model,
             temperature=0.6,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": sys_prompt},
+                {"role": "system", "content": sp},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=2200,
+            max_tokens=2600,
         )
         content = resp.choices[0].message.content
         obj = json.loads(content)
         base = sanitize_line(obj.get("base", ""))
         extra = sanitize_line(obj.get("extra", ""))
-        # Clamp lengths if the model overshoots/undershoots
+        # Clamp lengths if the model overshoots/undershoots; pad with offline to hit exact-ish targets deterministically.
         if token_len(base) < TARGET_TOKENS_P1:
-            # pad with offline to hit target deterministically
-            pad = synth_base_context(TARGET_TOKENS_P1 - token_len(base), topic)
+            pad = synth_base_context(TARGET_TOKENS_P1 - token_len(base), topic, lang)
             base = sanitize_line((base + " " + pad).strip())
         extra = clamp_to_target(extra, TARGET_TOKENS_P2_EXTRA)
         return base, extra
 
-    for topic in topics:
+    for i in range(args.rows):
+        topic = TOPIC_SEEDS[i % len(TOPIC_SEEDS)]
+        lang = langs[i % len(langs)]
         try:
-            base, extra = fetch_from_llm(topic)
+            base, extra = fetch_from_llm(topic, lang)
         except Exception:
-            # Fallback to offline if API fails
-            base = synth_base_context(TARGET_TOKENS_P1, topic)
-            extra = synth_followup_extra(base, topic, TARGET_TOKENS_P2_EXTRA)
+            base = synth_base_context(TARGET_TOKENS_P1, topic, lang)
+            extra = synth_followup_extra(base, topic, TARGET_TOKENS_P2_EXTRA, lang)
         p1 = sanitize_line(base)
         p2 = sanitize_line(base + " " + extra)
-        rows.append((p1, p2, sanitize_line(topic)))
+        rows.append((p1, p2, sanitize_line(f"{topic} [{lang}]")))
 
     write_rows(rows, Path(args.outfile))
     print(f"✅ Wrote {len(rows)} rows to {args.outfile} (pipe-delimited, OpenAI-assisted).")
@@ -348,3 +461,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
