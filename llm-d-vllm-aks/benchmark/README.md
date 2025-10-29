@@ -24,7 +24,7 @@ Gateway (smart routing):
 
 python3 kv_latency_demo.py \
   --file prompts.txt \
-  --index 2 \
+  --index 960 \
   --mode gw \
   --gw-url http://51.8.246.164 \
   --model meta-llama/Meta-Llama-3.1-8B-Instruct \
@@ -32,19 +32,20 @@ python3 kv_latency_demo.py \
   --jsonl results.jsonl
 
 
-LoadBalancer (round-robin; fresh TCP per call):
-
-python3 kv_latency_demo.py \
+python3 kv_latency_parallel.py \
+  --concurrency 10 \
+  --kv-script kv_latency_demo.py \
   --file prompts.txt \
-  --index 8 \
-  --mode lb \
-  --lb-url http://4.156.35.174 \
-  --model "Qwen/Qwen3-0.6B" \
+  --index 50 \
+  --gw-url http://51.8.246.164 \
+  --model meta-llama/Meta-Llama-3.1-8B-Instruct \
   --stream \
-  --warmup 1 \
+  --ttft-mode first-content \
+  --sleep-between 0.05 \
   --jsonl results.jsonl
 
-python3 analyze_results.py results.jsonl
+
+
 
   ```
 
