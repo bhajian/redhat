@@ -19,8 +19,14 @@ Measure the impact of vLLM KV-cache reuse when routing requests through a cache-
 
 ## Commands to run the benchmark testing
 
+1- First run 
 ```
-Gateway (smart routing):
+python3 make_prompts.py --rows 1000
+```
+That command will generate 1000 prompts in prompts.txt
+
+Then try benchmark and test with different index of the prompt.
+```
 
 python3 kv_latency_demo.py \
   --file prompts.txt \
