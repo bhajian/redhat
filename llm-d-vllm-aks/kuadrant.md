@@ -39,19 +39,19 @@ https://artifacthub.io/packages/helm/kuadrant/kuadrant-operator
             --timeout=300s \
             https://github.com/istio-ecosystem/sail-operator/releases/download/0.1.0/sail-operator-0.1.0.tgz
 
-    kubectl apply -f -<<EOF
+    kubectl apply -f -<<<EOF
     apiVersion: sailoperator.io/v1alpha1
     kind: Istio
     metadata:
-    name: default
+      name: default
     spec:
-    # Supported values for sail-operator v0.1.0 are [v1.22.4,v1.23.0]
-    version: v1.23.0
-    namespace: istio-system
-    # Disable autoscaling to reduce dev resources
-    values:
-        pilot:
-        autoscaleEnabled: false
+      # Supported values for sail-operator v0.1.0 are [v1.22.4,v1.23.0]
+      version: v1.23.0
+      namespace: istio-system
+      # Disable autoscaling to reduce dev resources
+      values:
+          pilot:
+          autoscaleEnabled: false
     EOF
     ```
 
@@ -73,8 +73,8 @@ https://artifacthub.io/packages/helm/kuadrant/kuadrant-operator
     apiVersion: kuadrant.io/v1beta1
     kind: Kuadrant
     metadata:
-    name: kuadrant
-    namespace: kuadrant-system
+      name: kuadrant
+      namespace: kuadrant-system
     EOF
     ```
 
@@ -100,18 +100,17 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: gateway.networking.k8s.io/v1
     kind: Gateway
     metadata:
-    name: ${KUADRANT_GATEWAY_NAME}
-    namespace: ${KUADRANT_GATEWAY_NS}
+      name: ${KUADRANT_GATEWAY_NAME}
+      namespace: ${KUADRANT_GATEWAY_NS}
     spec:
-    gatewayClassName: istio
-    listeners:
-
-    - name: http
+      gatewayClassName: istio
+      listeners:
+      - name: http
         protocol: HTTP
         port: 80
         hostname: "trlp-tutorial.example.com"
         allowedRoutes:
-        namespaces:
+          namespaces:
             from: All
     EOF
     ```
@@ -122,14 +121,14 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: gateway.networking.k8s.io/v1
     kind: HTTPRoute
     metadata:
-    name: trlp-tutorial-llm-sim
+      name: trlp-tutorial-llm-sim
     spec:
-    hostnames:
+      hostnames:
         - trlp-tutorial.example.com
-    parentRefs:
+      parentRefs:
         - name: ${KUADRANT_GATEWAY_NAME}
         namespace: ${KUADRANT_GATEWAY_NS}
-    rules:
+      rules:
         - matches:
             - path:
                 type: PathPrefix
@@ -147,15 +146,15 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: gateway.networking.k8s.io/v1beta1
     kind: ReferenceGrant
     metadata:
-    name: vllm-llama8b
-    namespace: vllm
+      name: vllm-llama8b
+      namespace: vllm
     spec:
-    from:
-    - group: gateway.networking.k8s.io
+      from:
+      - group: gateway.networking.k8s.io
         kind: HTTPRoute
         namespace: default
-    to:
-    - group: ""
+      to:
+      - group: ""
         kind: Service
     EOF
     ```
@@ -187,16 +186,16 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: v1
     kind: Secret
     metadata:
-    name: trlp-tutorial-api-key-free-user-1
-    namespace: ${KUADRANT_SYSTEM_NS}
-    labels:
+      name: trlp-tutorial-api-key-free-user-1
+      namespace: ${KUADRANT_SYSTEM_NS}
+      labels:
         authorino.kuadrant.io/managed-by: authorino
         app: my-llm
-    annotations:
+      annotations:
         kuadrant.io/groups: free
         secret.kuadrant.io/user-id: user-1
     stringData:
-    api_key: iamafreeuser
+      api_key: iamafreeuser
     type: Opaque
     EOF
     ```
@@ -207,16 +206,16 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: v1
     kind: Secret
     metadata:
-    name: trlp-tutorial-api-key-gold-user-1
-    namespace: ${KUADRANT_SYSTEM_NS}
-    labels:
+      name: trlp-tutorial-api-key-gold-user-1
+      namespace: ${KUADRANT_SYSTEM_NS}
+      labels:
         authorino.kuadrant.io/managed-by: authorino
         app: my-llm
-    annotations:
+      annotations:
         kuadrant.io/groups: gold
         secret.kuadrant.io/user-id: user-2
     stringData:
-    api_key: iamagolduser
+      api_key: iamagolduser
     type: Opaque
     EOF
     ```
@@ -227,14 +226,14 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: kuadrant.io/v1
     kind: AuthPolicy
     metadata:
-    name: trlp-tutorial-llm-api-keys
-    namespace: ${KUADRANT_GATEWAY_NS}
+      name: trlp-tutorial-llm-api-keys
+      namespace: ${KUADRANT_GATEWAY_NS}
     spec:
-    targetRef:
+      targetRef:
         group: gateway.networking.k8s.io
         kind: Gateway
         name: ${KUADRANT_GATEWAY_NAME}
-    rules:
+      rules:
         authentication:
         api-key-users:
             apiKey:
@@ -271,14 +270,14 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     apiVersion: kuadrant.io/v1alpha1
     kind: TokenRateLimitPolicy
     metadata:
-    name: trlp-tutorial-token-limits
-    namespace: ${KUADRANT_GATEWAY_NS}
+      name: trlp-tutorial-token-limits
+      namespace: ${KUADRANT_GATEWAY_NS}
     spec:
-    targetRef:
+      targetRef:
         group: gateway.networking.k8s.io
         kind: Gateway
         name: ${KUADRANT_GATEWAY_NAME}
-    limits:
+      limits:
         free:
         rates:
 
