@@ -127,16 +127,16 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
         - trlp-tutorial.example.com
       parentRefs:
         - name: ${KUADRANT_GATEWAY_NAME}
-        namespace: ${KUADRANT_GATEWAY_NS}
+          namespace: ${KUADRANT_GATEWAY_NS}
       rules:
         - matches:
             - path:
                 type: PathPrefix
                 value: "/"
-        backendRefs:
+          backendRefs:
             - namespace: vllm
-            name: vllm-llama8b
-            port: 80
+              name: vllm-llama8b
+              port: 80
     EOF
     ```
 
@@ -221,86 +221,86 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
     ```
 1. Configure auth policy
 
-    ```bash
-    kubectl apply -f - <<EOF
-    apiVersion: kuadrant.io/v1
-    kind: AuthPolicy
-    metadata:
-      name: trlp-tutorial-llm-api-keys
-      namespace: ${KUADRANT_GATEWAY_NS}
-    spec:
-      targetRef:
-        group: gateway.networking.k8s.io
-        kind: Gateway
-        name: ${KUADRANT_GATEWAY_NAME}
-      rules:
-        authentication:
-        api-key-users:
-            apiKey:
-            selector:
-                matchLabels:
-                app: my-llm
-            credentials:
-            authorizationHeader:
-                prefix: APIKEY
-        response:
-        success:
-            filters:
-            identity:
-                json:
-                properties:
-                    groups:
-                    selector: auth.identity.metadata.annotations.kuadrant\.io/groups
-                    userid:
-                    selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id
-        authorization:
-        allow-groups:
-            opa:
-            rego: |
-                groups := split(object.get(input.auth.identity.metadata.annotations, "kuadrant.io/groups", ""), ",")
-                allow { groups[_] == "free" }
-                allow { groups[_] == "gold" }
-    EOF
-    ```
+```bash
+kubectl apply -f - <<EOF
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: trlp-tutorial-llm-api-keys
+  namespace: ${KUADRANT_GATEWAY_NS}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ${KUADRANT_GATEWAY_NAME}
+  rules:
+    authentication:
+      api-key-users:
+        apiKey:
+          selector:
+            matchLabels:
+              app: my-llm
+        credentials:
+          authorizationHeader:
+            prefix: APIKEY
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                groups:
+                  selector: auth.identity.metadata.annotations.kuadrant\.io/groups
+                userid:
+                  selector: auth.identity.metadata.annotations.secret\.kuadrant\.io/user-id
+    authorization:
+      allow-groups:
+        opa:
+          rego: |
+            groups := split(object.get(input.auth.identity.metadata.annotations, "kuadrant.io/groups", ""), ",")
+            allow { groups[_] == "free" }
+            allow { groups[_] == "gold" }
+EOF
+```
 
 1. Apply token rate limiting
 
-    ```bash
-    kubectl apply -f - <<EOF
-    apiVersion: kuadrant.io/v1alpha1
-    kind: TokenRateLimitPolicy
-    metadata:
-      name: trlp-tutorial-token-limits
-      namespace: ${KUADRANT_GATEWAY_NS}
-    spec:
-      targetRef:
-        group: gateway.networking.k8s.io
-        kind: Gateway
-        name: ${KUADRANT_GATEWAY_NAME}
-      limits:
-        free:
-        rates:
+```bash
+kubectl apply -f - <<EOF
+apiVersion: kuadrant.io/v1alpha1
+kind: TokenRateLimitPolicy
+metadata:
+  name: trlp-tutorial-token-limits
+  namespace: ${KUADRANT_GATEWAY_NS}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: ${KUADRANT_GATEWAY_NAME}
+  limits:
+    free:
+      rates:
 
-            - limit: 50 # 50 tokens per minute for free users (small for testing)
-            window: 1m
-        when:
-            - predicate: request.path == "/v1/chat/completions"
-            - predicate: |
-                auth.identity.groups.split(",").exists(g, g == "free")
-        counters:
-            - expression: auth.identity.userid
-        gold:
-        rates:
-            - limit: 200 # 200 tokens per minute for gold users (small for testing)
-            window: 1m
-        when:
-            - predicate: request.path == "/v1/chat/completions"
-            - predicate: |
-                auth.identity.groups.split(",").exists(g, g == "gold")
-        counters:
-            - expression: auth.identity.userid
-    EOF
-    ```
+        - limit: 50 # 50 tokens per minute for free users (small for testing)
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions"
+        - predicate: |
+            auth.identity.groups.split(",").exists(g, g == "free")
+      counters:
+        - expression: auth.identity.userid
+    gold:
+      rates:
+        - limit: 200 # 200 tokens per minute for gold users (small for testing)
+          window: 1m
+      when:
+        - predicate: request.path == "/v1/chat/completions"
+        - predicate: |
+            auth.identity.groups.split(",").exists(g, g == "gold")
+      counters:
+        - expression: auth.identity.userid
+EOF
+```
 
 ### Test token count and rate-limits
 
@@ -314,7 +314,7 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
         -H 'Content-Type: application/json' \
         -X POST http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
         -d '{
-            "model": "meta-llama/Llama-3.1-8B-Instruct",
+            "model": "RedHatAI/Llama-3.1-8B-Instruct",
             "messages": [
                 { "role": "user", "content": "What is Kubernetes?" }
             ],
@@ -348,7 +348,7 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
      -H 'Content-Type: application/json' \
      -X POST http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
      -d '{
-           "model": "meta-llama/Llama-3.1-8B-Instruct",
+           "model": "RedHatAI/Llama-3.1-8B-Instruct",
            "messages": [
              { "role": "user", "content": "What is Kubernetes?" }
            ],
@@ -370,7 +370,7 @@ https://docs.kuadrant.io/latest/kuadrant-operator/doc/user-guides/tokenratelimit
      -H 'Content-Type: application/json' \
      -X POST http://$KUADRANT_GATEWAY_URL/v1/chat/completions \
      -d '{
-           "model": "meta-llama/Llama-3.1-8B-Instruct",
+           "model": "RedHatAI/Llama-3.1-8B-Instruct",
            "messages": [
              { "role": "user", "content": "Explain cloud native architecture" }
            ],
