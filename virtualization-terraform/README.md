@@ -37,3 +37,8 @@ terraform apply -auto-approve -var="vm_power_state=running"
 ```
 
 Terraform will patch the VM automatically.
+
+## To Delete
+```
+terraform destroy
+```
