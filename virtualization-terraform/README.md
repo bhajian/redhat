@@ -24,6 +24,12 @@ Then
 terraform apply -auto-approve
 ```
 
+Now query inside linux:
+```
+# lscpu
+# free -h
+```
+
 ## To stop and start a VM
 
 To stop:
