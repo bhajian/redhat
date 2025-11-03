@@ -1,6 +1,5 @@
 ############################################################
-# main.tf — Terraform drop-in to create a RHEL8 VM on OpenShift
-# using the kubectl_manifest provider (no schema issues)
+# main.tf — KubeVirt VM + Terraform start/stop control
 ############################################################
 
 terraform {
@@ -11,30 +10,49 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = ">= 1.19.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.2.0"
+    }
   }
 }
 
-# --- Provider ---
+# --- Providers ---
 provider "kubectl" {
   config_path = "~/.kube/config"
 }
 
-# --- Local Variables ---
+# --- Power control (no manifest edits needed) ---
+variable "vm_power_state" {
+  description = "Desired power state of the VM: running or stopped"
+  type        = string
+  default     = "running"
+  validation {
+    condition     = contains(["running", "stopped"], lower(var.vm_power_state))
+    error_message = "vm_power_state must be 'running' or 'stopped'."
+  }
+}
+
+# --- Editable settings ---
 locals {
   vm_name         = "rhel8-gray-cattle-98-tf"
   vm_namespace    = "default"
+
+  # OS image DataSource (comes from OpenShift Virtualization OS images)
   datasource_ns   = "openshift-virtualization-os-images"
   datasource_name = "rhel8"
+
   disk_size_gi    = 30
-  cpu_cores       = 2
+  cpu_cores       = 1          # adjust as needed
   cpu_sockets     = 1
   cpu_threads     = 1
-  memory_guest    = "4Gi"
+  memory_guest    = "2Gi"      # adjust as needed
+
   cloud_user      = "cloud-user"
-  cloud_password  = "qmo4-6vks-ryv0"
+  cloud_password  = "qmo4-6vks-ryv0"  # demo; rotate for real
 }
 
-# --- VirtualMachine Resource ---
+# --- VirtualMachine (with inline DataVolumeTemplate) ---
 resource "kubectl_manifest" "vm_rhel8" {
   yaml_body = <<-YAML
     apiVersion: kubevirt.io/v1
@@ -45,6 +63,7 @@ resource "kubectl_manifest" "vm_rhel8" {
       labels:
         app: rhel8
     spec:
+      # Default desired state on create; power control below can override.
       runStrategy: RerunOnFailure
 
       dataVolumeTemplates:
@@ -61,7 +80,7 @@ resource "kubectl_manifest" "vm_rhel8" {
             resources:
               requests:
                 storage: ${local.disk_size_gi}Gi
-            # Uncomment this line to specify your storage class manually:
+            # To pin a storage class, add the line below WITHOUT interpolation:
             # storageClassName: ocs-external-storagecluster-ceph-rbd
 
       template:
@@ -115,7 +134,32 @@ resource "kubectl_manifest" "vm_rhel8" {
   YAML
 }
 
-# --- Outputs ---
+# --- Power control via oc patch (idempotent) ---
+# Start (power on) when vm_power_state=running
+resource "null_resource" "vm_power_on" {
+  count      = lower(var.vm_power_state) == "running" ? 1 : 0
+  depends_on = [kubectl_manifest.vm_rhel8]
+
+  triggers = { state = lower(var.vm_power_state) }
+
+  provisioner "local-exec" {
+    command = "oc patch vm ${local.vm_name} -n ${local.vm_namespace} --type merge -p '{\"spec\":{\"runStrategy\":\"RerunOnFailure\"}}'"
+  }
+}
+
+# Stop (power off) when vm_power_state=stopped
+resource "null_resource" "vm_power_off" {
+  count      = lower(var.vm_power_state) == "stopped" ? 1 : 0
+  depends_on = [kubectl_manifest.vm_rhel8]
+
+  triggers = { state = lower(var.vm_power_state) }
+
+  provisioner "local-exec" {
+    command = "oc patch vm ${local.vm_name} -n ${local.vm_namespace} --type merge -p '{\"spec\":{\"runStrategy\":\"Halted\"}}'"
+  }
+}
+
+# --- Handy outputs ---
 output "vm_name" {
   value = local.vm_name
 }

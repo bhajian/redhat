@@ -19,34 +19,21 @@ terraform apply -auto-approve
   cpu_cores    = 2        # was 1
   memory_guest = "4Gi"    # was "2Gi"
 ```
-
-## To stop and start a VM
-
-Add a variable and update your resource:
-```
-variable "vm_runstrategy" {
-  type    = string
-  default = "RerunOnFailure" # change to "Halted" to stop
-}
-
-# then inside your manifest:
-spec:
-  runStrategy: ${var.vm_runstrategy}
-```
-
-Then run:
+Then
 ```
 terraform apply -auto-approve
 ```
 
+## To stop and start a VM
+
 To stop:
 ```
-terraform apply -var="vm_runstrategy=Halted" -auto-approve
+terraform apply -auto-approve -var="vm_power_state=stopped"
 ```
 
 To start:
 ```
-terraform apply -var="vm_runstrategy=RerunOnFailure" -auto-approve
+terraform apply -auto-approve -var="vm_power_state=running" 
 ```
 
 Terraform will patch the VM automatically.
